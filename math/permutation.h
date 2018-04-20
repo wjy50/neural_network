@@ -10,6 +10,11 @@ extern "C"
 {
 #endif
 
+/**
+ * 生成从0到n的随机排列
+ * @param arr 结果容器
+ * @param n
+ */
 void randomPermutation(int *arr, int n);
 
 #ifdef __cplusplus

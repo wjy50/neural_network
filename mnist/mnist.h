@@ -18,6 +18,11 @@ private:
 public:
     explicit MNISTImage(const char *path);
 
+    /**
+     * 获取第i张图片
+     * @param i 序号
+     * @return 第i张图片数据，大小为width * height的数组，不能在外部delete[]
+     */
     double *get(int i);
 
     ~MNISTImage();
@@ -33,6 +38,12 @@ private:
 public:
     explicit MNISTLabel(const char *path);
 
+    /**
+     * 获取第i个标签
+     * 将n ∈ [0, 9]转换成十维向量，第n+1个分量为1，其余分量为0
+     * @param i 序号
+     * @return 标签向量，不能在外部delete[]
+     */
     double *get(int i);
 
     ~MNISTLabel();
