@@ -57,8 +57,8 @@ double* MNISTImage::get(int i)
 
 MNISTImage::~MNISTImage()
 {
-    delete buffer;
-    delete image;
+    delete[] buffer;
+    delete[] image;
 }
 
 MNISTLabel::MNISTLabel(const char *path)
@@ -92,5 +92,5 @@ double* MNISTLabel::get(int i)
 
 MNISTLabel::~MNISTLabel()
 {
-    delete buffer;
+    delete[] buffer;
 }
