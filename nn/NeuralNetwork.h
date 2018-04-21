@@ -10,21 +10,45 @@
 class NeuralNetwork
 {
 private:
-    int *nums;
+    int *nums;                             /*记录每层的神经元数*/
 
     double **weights;
     double **biases;
 
-    double **nablaWeights;
-    double **nablaBiases;
+    double **nablaWeights;                 /*cost function对权重的梯度*/
+    double **nablaBiases;                  /*cost function对bias的梯度*/
 
-    double **zs;
-    double **as;
-    double **deltas;
+    double **zs;                           /*记录每层线性输出（实际上是激活函数导函数在z的取值）*/
+    double **as;                           /*记录每层激活输出*/
+    double **deltas;                       /*每层的δ*/
 
     int layerCount;
-    double (*activation)(double);
-    double (*dActivation_dx)(double);
+    double (*activation)(double);          /*激活函数*/
+    double (*dActivation_dx)(double);      /*激活函数导函数*/
+
+    /**
+     * 接受输入计算输出
+     * 同时保留每层的带权输出z和激活输出a
+     * @param x 输入向量
+     */
+    void tracedFeedForward(double x[]);
+
+    /**
+     * 反向传播求每层的δ
+     * @param y 期望的输出
+     */
+    void backPropagate(double *y);
+
+    /**
+     * 计算cost function关于weights和biases的梯度
+     * 包含了前馈和反向传播
+     * 是SGD的核心之一
+     * @param x 输入
+     * @param y 期望的输出
+     */
+    void calculateNabla(double *x, double *y);
+
+    void clearNabla();
 public:
     /**
      * 构造神经网络
@@ -45,17 +69,11 @@ public:
     void initialize();
 
     /**
-     * 输入矩阵(列向量)并计算输出
-     * @param x 输入矩阵或列向量，向量维数必须与输入层神经元个数相同，若是矩阵则行数必须与输入层神经元个数相同
-     * @return 输出矩阵(列向量)
-     */
-    //Matrix<double> &input(Matrix<double> &x);
-
-    /**
-     * 训练
-     * 自动根据输入计算输出和cost function，并使用反向传播梯度下降法进行训练
+     * mini batch == 1 的GD
+     * 对单个输入进行梯度下降，直接更新参数
      * @param x 输入列向量，维数必须与输入层神经元个数相同
-     * @param y 标签，即输入对应的正确输出，维数与输出层神经元个数相同
+     * @param y 标签，即输入对应的期望输出，维数与输出层神经元个数相同
+     * @return 输出是否符合期望的输出
      */
     bool train(double x[], double y[]);
 
@@ -85,30 +103,6 @@ public:
      * @return 输出向量
      */
     double *feedForward(double x[]);
-
-    /**
-     * 接受输入计算输出
-     * 同时保留每层的带权输出z和激活输出a
-     * @param x 输入向量
-     */
-    void tracedFeedForward(double x[]);
-
-    /**
-     * 反向传播求每层的δ
-     * @param y 期望的输出
-     */
-    void backPropagate(double *y);
-
-    /**
-     * 计算cost function关于weights和biases的梯度
-     * 包含了前馈和反向传播
-     * 是SGD的核心之一
-     * @param x 输入
-     * @param y 期望的输出
-     */
-    void calculateNabla(double *x, double *y);
-
-    void clearNabla();
 
     ~NeuralNetwork();
 };
