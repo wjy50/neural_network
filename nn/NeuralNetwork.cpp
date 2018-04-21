@@ -92,7 +92,7 @@ void NeuralNetwork::tracedFeedForward(double *x)
         }
     }
 
-    /*输出层使用SoftMax激活函数能显著提高准确度和缩短训练时间*/
+    /*输出层使用SoftMax激活函数能显著提高分类准确度和缩短训练时间*/
     int i = layerCount-1;
     as[i] = multiplyMV(weights[i], as[i-1], nums[i], nums[i-1]);
     addMMTo(as[i], as[i], biases[i], nums[i], 1);
