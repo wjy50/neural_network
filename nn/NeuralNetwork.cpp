@@ -15,7 +15,7 @@ using namespace std;
 #include "../math/permutation.h"
 #include "../math/Activator.h"
 
-NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activation)(double), double (*dActivation_dx)(double))
+NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, Activator activator)
 {
     this->layerCount = layerCount;
     this->nums = new int[layerCount];
@@ -25,8 +25,9 @@ NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activatio
     zs = new double*[layerCount-1];
     as = new double*[layerCount];
     deltas = new double*[layerCount];
-    this->activation = activation;
-    this->dActivation_dx = dActivation_dx;
+    this->activator = activator;
+    this->activation = ACTIVATION_FUNCTIONS[activator];
+    this->dActivation_dx = D_ACTIVATION_FUNCTIONS[activator];
 
     weights[0] = nullptr;
     for (int i = 1; i < layerCount; ++i) {
@@ -56,6 +57,58 @@ NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activatio
 
     zs[0] = nullptr;
     deltas[0] = nullptr;
+
+    eta = -0.1;
+    reg = 5;
+}
+
+NeuralNetwork::NeuralNetwork(const char *filePath)
+{
+    FILE *file = fopen(filePath, "rb");
+    if (file) {
+        fread(&eta, sizeof(double), 1, file);
+        fread(&reg, sizeof(double), 1, file);
+        fread(&activator, sizeof(Activator), 1, file);
+        fread(&layerCount, sizeof(int), 1, file);
+        nums = new int[layerCount];
+        fread(nums, sizeof(int), static_cast<size_t>(layerCount), file);
+        weights = new double*[layerCount];
+        weights[0] = nullptr;
+        for (int i = 1; i < layerCount; ++i) {
+            weights[i] = new double[nums[i]*nums[i-1]];
+            fread(weights[i], sizeof(double), (size_t)nums[i]*(size_t)nums[i-1], file);
+        }
+
+        biases = new double*[layerCount];
+        biases[0] = nullptr;
+        for (int i = 1; i < layerCount; ++i) {
+            biases[i] = new double[nums[i]];
+            fread(biases[i], sizeof(double), (size_t)nums[i], file);
+        }
+        fclose(file);
+
+        activation = ACTIVATION_FUNCTIONS[activator];
+        dActivation_dx = D_ACTIVATION_FUNCTIONS[activator];
+
+        zs = new double*[layerCount-1];
+        as = new double*[layerCount];
+        deltas = new double*[layerCount];
+
+        nablaWeights = new double*[layerCount];
+        nablaBiases = new double*[layerCount];
+        nablaWeights[0] = nullptr;
+        for (int i = 1; i < layerCount; ++i) {
+            nablaWeights[i] = new double[nums[i]*nums[i-1]];
+        }
+
+        nablaBiases[0] = nullptr;
+        for (int i = 1; i < layerCount; ++i) {
+            nablaBiases[i] = new double[nums[i]];
+        }
+
+        zs[0] = nullptr;
+        deltas[0] = nullptr;
+    }
 }
 
 double* NeuralNetwork::feedForward(double *x)
@@ -169,11 +222,9 @@ void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int mi
         }
 
         /*更新w和b*/
-        double eta = -0.1;
-        double regularizationParam = 5;
         for (int i = 1; i < layerCount; ++i) {
             for (int j = 0; j < nums[i]*nums[i - 1]; ++j) {
-                weights[i][j] = weights[i][j]*(1+eta*regularizationParam/trainSetSize) + eta*nablaWeights[i][j]/miniBatchSize;
+                weights[i][j] = weights[i][j]*(1+eta*reg/trainSetSize) + eta*nablaWeights[i][j]/miniBatchSize;
             }
         }
         for (int i = 1; i < layerCount; ++i) {
@@ -182,49 +233,6 @@ void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int mi
             }
         }
     }
-}
-
-bool NeuralNetwork::train(double x[], double y[])
-{
-    tracedFeedForward(x);
-
-    double *a = as[layerCount-1];
-
-    int maxOut = 0;
-    for (int i = 1; i < nums[layerCount - 1]; ++i) {
-        if (a[i] > a[maxOut]) maxOut = i;
-    }
-    bool re = y[maxOut] == 1;
-
-    /*反向传播计算delta*/
-    backPropagate(y);
-
-    /*梯度下降*/
-    for (int i = layerCount-1; i > 0; --i) {
-        for (int j = 0; j < nums[i]; ++j) {
-            double *CWJ = multiplyNM(deltas[i][j], as[i-1], nums[i-1], 1);
-            double CBJ = deltas[i][j];
-            double eta = -0.05;
-            CBJ *= eta;
-            mMultiplyN(eta, CWJ, nums[i-1], 1);
-            biases[i][j] += CBJ;
-            addMMTo(weights[i]+j*nums[i-1], weights[i]+j*nums[i-1], CWJ, 1, nums[i-1]);
-            delete[] CWJ;
-        }
-    }
-
-    /*释放资源*/
-    for (int i = 1; i < layerCount; ++i) {
-        delete[] zs[i];
-    }
-    for (int i = 1; i < layerCount; ++i) {
-        delete[] as[i];
-    }
-    for (int i = 1; i < layerCount; ++i) {
-        delete[] deltas[i];
-    }
-
-    return re;
 }
 
 bool NeuralNetwork::test(double *x, double *y)
@@ -264,6 +272,35 @@ void NeuralNetwork::initialize()
     /*bias全部置0*/
     for (int i = 1; i < layerCount; ++i) {
         memset(biases[i], 0, sizeof(double)*nums[i]);
+    }
+}
+
+void NeuralNetwork::setLearningRate(double l)
+{
+    eta = -l;
+}
+
+void NeuralNetwork::setRegularizationParam(double r)
+{
+    reg = r;
+}
+
+void NeuralNetwork::save(const char *path)
+{
+    FILE *file = fopen(path, "wb");
+    if (file) {
+        fwrite(&eta, sizeof(double), 1, file);
+        fwrite(&reg, sizeof(double), 1, file);
+        fwrite(&activator, sizeof(Activator), 1, file);
+        fwrite(&layerCount, sizeof(int), 1, file);
+        fwrite(nums, sizeof(int), static_cast<size_t>(layerCount), file);
+        for (int i = 1; i < layerCount; ++i) {
+            fwrite(weights[i], sizeof(double), (size_t)nums[i]*(size_t)nums[i-1], file);
+        }
+        for (int i = 1; i < layerCount; ++i) {
+            fwrite(biases[i], sizeof(double), (size_t)nums[i], file);
+        }
+        fclose(file);
     }
 }
 
