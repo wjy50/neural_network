@@ -3,6 +3,8 @@
  */
 
 #include <cstdio>
+#include <random>
+#include <cstring>
 #include "mnist.h"
 
 void toBE(void *p, size_t size)
@@ -17,6 +19,7 @@ void toBE(void *p, size_t size)
 
 MNISTImage::MNISTImage(const char *path)
 {
+    tx = ty = 0;
     FILE *file = fopen(path, "rb");
     if (file) {
         fseek(file, 0, SEEK_END);
@@ -46,11 +49,30 @@ MNISTImage::MNISTImage(const char *path)
     }
 }
 
+void MNISTImage::setTranslation(int x, int y)
+{
+    tx = x;
+    ty = y;
+}
+
 double* MNISTImage::get(int i)
 {
     const unsigned char *r = buffer+width*height*i;
-    for (int j = 0; j < width * height; ++j) {
-        image[j] = (double)r[j] / 0xff;
+    if (tx != 0 || ty != 0) {
+        memset(image, 0, sizeof(double)*width*height);
+        int dy = std::max(0, ty);
+        int dx = std::max(0, tx);
+        int yi = 0;
+        for (int j = dy; j < height-dy; ++j, ++yi) {
+            int xi = 0;
+            for (int k = dx; k < width-dx; ++k) {
+                image[yi*width+xi++] = (double)r[j*width+k] / 0xff;
+            }
+        }
+    } else {
+        for (int j = 0; j < width * height; ++j) {
+            image[j] = (double)r[j] / 0xff;
+        }
     }
     return image;
 }

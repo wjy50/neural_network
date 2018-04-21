@@ -15,8 +15,19 @@ private:
     unsigned char *buffer;
     int count;
     int width, height;
+
+    int tx, ty;
 public:
     explicit MNISTImage(const char *path);
+
+    /**
+     * 设置图像平移量限制
+     * 取数据时在x和y方向上平移
+     * 用于人工拓展训练集
+     * @param x
+     * @param y
+     */
+    void setTranslation(int x, int y);
 
     /**
      * 获取第i张图片
