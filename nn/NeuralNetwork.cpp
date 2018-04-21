@@ -13,6 +13,7 @@ using namespace std;
 #include "NeuralNetwork.h"
 #include "../math/Matrix.h"
 #include "../math/permutation.h"
+#include "../math/Activator.h"
 
 NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activation)(double), double (*dActivation_dx)(double))
 {
@@ -21,7 +22,7 @@ NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activatio
     memcpy(this->nums, nums, layerCount * sizeof(int));
     weights = new double*[layerCount];
     biases = new double*[layerCount];
-    zs = new double*[layerCount];
+    zs = new double*[layerCount-1];
     as = new double*[layerCount];
     deltas = new double*[layerCount];
     this->activation = activation;
@@ -45,10 +46,6 @@ NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activatio
     nablaBiases = new double*[layerCount];
     nablaWeights[0] = nullptr;
     for (int i = 1; i < layerCount; ++i) {
-        /**
-         * 第i层矩阵行数为该层神经元数
-         *          列数为上一层神经元数
-         */
         nablaWeights[i] = new double[nums[i]*nums[i-1]];
     }
 
@@ -64,7 +61,7 @@ NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, double (*activatio
 double* NeuralNetwork::feedForward(double *x)
 {
     double *a = x;
-    for (int i = 1; i < layerCount; ++i) {
+    for (int i = 1; i < layerCount-1; ++i) {
         double *z = multiplyMV(weights[i], a, nums[i], nums[i-1]);
         addMMTo(z, z, biases[i],  nums[i], 1);
         for (int j = 0; j < nums[i]; ++j) {
@@ -73,26 +70,33 @@ double* NeuralNetwork::feedForward(double *x)
         if (i > 1) delete[] a;
         a = z;
     }
+
+    int i = layerCount-1;
+    a = multiplyMV(weights[i], a, nums[i], nums[i-1]);
+    addMMTo(a, a, biases[i], nums[i], 1);
+    softMax(a, nums[i]);
+
     return a;
 }
 
 void NeuralNetwork::tracedFeedForward(double *x)
 {
-    double *a = x;
-    double *z;
-    as[0] = a;
-    for (int i = 1; i < layerCount; ++i) {
-        z = multiplyMV(weights[i], a, nums[i], nums[i-1]);
-        addMMTo(z, z, biases[i], nums[i], 1);
-        a = new double[nums[i]];
+    as[0] = x;
+    for (int i = 1; i < layerCount-1; ++i) { /*对输出层使用SoftMax激活函数，需要特殊处理*/
+        zs[i] = multiplyMV(weights[i], as[i-1], nums[i], nums[i-1]);
+        addMMTo(zs[i], zs[i], biases[i], nums[i], 1);
+        as[i] = new double[nums[i]];
         for (int j = 0; j < nums[i]; ++j) {
-            a[j] = activation(z[j]);
-            z[j] = dActivation_dx(z[j]);/*后面用到的都是导数，直接在此处理*/
+            as[i][j] = activation(zs[i][j]);
+            zs[i][j] = dActivation_dx(zs[i][j]);/*后面用到的都是导数，直接在此处理*/
         }
-
-        zs[i] = z;
-        as[i] = a;
     }
+
+    /*输出层使用SoftMax激活函数能显著提高准确度和缩短训练时间*/
+    int i = layerCount-1;
+    as[i] = multiplyMV(weights[i], as[i-1], nums[i], nums[i-1]);
+    addMMTo(as[i], as[i], biases[i], nums[i], 1);
+    softMax(as[i], nums[i]);
 }
 
 void NeuralNetwork::backPropagate(double *y)
@@ -137,7 +141,7 @@ void NeuralNetwork::calculateNabla(double *x, double *y)
     }
 
     /*释放资源*/
-    for (int i = 1; i < layerCount; ++i) {
+    for (int i = 1; i < layerCount-1; ++i) {
         delete[] zs[i];
     }
     for (int i = 1; i < layerCount; ++i) {
@@ -148,7 +152,7 @@ void NeuralNetwork::calculateNabla(double *x, double *y)
     }
 }
 
-int NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int miniBatchSize)
+void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int miniBatchSize)
 {
     unique_ptr<int> indices(new int[trainSetSize]);
     randomPermutation(indices.get(), trainSetSize);
@@ -164,7 +168,7 @@ int NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int min
             calculateNabla(x, y);
         }
 
-        /*修改w和b*/
+        /*更新w和b*/
         double eta = -0.1;
         double regularizationParam = 5;
         for (int i = 1; i < layerCount; ++i) {
@@ -249,7 +253,7 @@ void NeuralNetwork::initialize()
     std::normal_distribution<double> distribution(0, 1);
     /*随机生成weight*/
     for (int i = 1; i < layerCount; ++i) {
-        double ni = sqrt(nums[i-1]);
+        double ni = nums[i-1];// sqrt(nums[i-1]);
         for (int j = 0; j < nums[i]; ++j) {
             for (int k = 0; k < nums[i - 1]; ++k) {
                 weights[i][j*nums[i-1]+k] = distribution(rd) / ni;
@@ -257,11 +261,9 @@ void NeuralNetwork::initialize()
         }
     }
 
-    /*随机生成bias*/
+    /*bias全部置0*/
     for (int i = 1; i < layerCount; ++i) {
-        for (int j = 0; j < nums[i]; ++j) {
-            biases[i][j] = distribution(rd);
-        }
+        memset(biases[i], 0, sizeof(double)*nums[i]);
     }
 }
 

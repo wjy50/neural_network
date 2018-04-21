@@ -93,9 +93,8 @@ public:
      * @param ys 训练集标签
      * @param trainSetSize 训练集大小
      * @param miniBatchSize mini batch大小
-     * @return
      */
-    int SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int miniBatchSize);
+    void SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int miniBatchSize);
 
     /**
      * 接受输入并计算输出
