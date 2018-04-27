@@ -7,7 +7,12 @@
 
 #include "../data/DataSet.h"
 
-void toBE(void *p, size_t size);
+/**
+ * 字节序反转
+ * @param p 待反转数据首地址
+ * @param size 待反转数据字节数
+ */
+void invertEndian(void *p, size_t size);
 
 class MNISTImage : public DataSet
 {

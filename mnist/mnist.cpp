@@ -7,7 +7,7 @@
 #include <cstring>
 #include "mnist.h"
 
-void toBE(void *p, size_t size)
+void invertEndian(void *p, size_t size)
 {
     auto *c = static_cast<char *>(p);
     for (int i = 0; i < size >> 1; ++i) {
@@ -30,11 +30,11 @@ MNISTImage::MNISTImage(const char *path)
         if (magic == 0x03080000) {
             count = 0;
             fread(&count, sizeof(int), 1, file);
-            toBE(&count, sizeof(int));
+            invertEndian(&count, sizeof(int));
             fread(&height, sizeof(int), 1, file);
-            toBE(&height, sizeof(int));
+            invertEndian(&height, sizeof(int));
             fread(&width, sizeof(int), 1, file);
-            toBE(&width, sizeof(int));
+            invertEndian(&width, sizeof(int));
             offset = static_cast<size_t>(ftell(file));
             buffer = new unsigned char[size - offset];
             image = new double[width*height];
@@ -101,7 +101,7 @@ MNISTLabel::MNISTLabel(const char *path)
         if (magic == 0x01080000) {
             count = 0;
             fread(&count, sizeof(int), 1, file);
-            toBE(&count, sizeof(int));
+            invertEndian(&count, sizeof(int));
             offset = static_cast<size_t>(ftell(file));
             buffer = new unsigned char[size - offset];
             fread(buffer, sizeof(char), static_cast<size_t>(size - offset), file);
