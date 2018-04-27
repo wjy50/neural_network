@@ -5,15 +5,17 @@
 #ifndef NEURAL_NETWORK_MNIST_H
 #define NEURAL_NETWORK_MNIST_H
 
+#include "../data/DataSet.h"
+
 void toBE(void *p, size_t size);
 
-class MNISTImage
+class MNISTImage : public DataSet
 {
 private:
-    long offset, size;
+    size_t offset, size;
     double *image;
     unsigned char *buffer;
-    int count;
+    size_t count;
     int width, height;
 
     int tx, ty;
@@ -34,16 +36,18 @@ public:
      * @param i 序号
      * @return 第i张图片数据，大小为width * height的数组，不能在外部delete[]
      */
-    double *get(int i);
+    double *get(size_t i) override;
+
+    size_t getSize() override;
 
     ~MNISTImage();
 };
 
-class MNISTLabel
+class MNISTLabel : public DataSet
 {
 private:
-    long offset, size;
-    int count;
+    size_t offset, size;
+    size_t count;
     unsigned char *buffer;
     double y[10];
 public:
@@ -55,7 +59,9 @@ public:
      * @param i 序号
      * @return 标签向量，不能在外部delete[]
      */
-    double *get(int i);
+    double *get(size_t i) override;
+
+    size_t getSize() override;
 
     ~MNISTLabel();
 };
