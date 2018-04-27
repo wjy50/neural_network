@@ -9,11 +9,14 @@ using namespace std;
 #include <cstring>
 #include <cmath>
 #include <random>
-#include <memory>
+
 #include "NeuralNetwork.h"
 #include "../math/Matrix.h"
 #include "../math/permutation.h"
 #include "../math/Activator.h"
+#include "../utils/UniquePointerExt.h"
+
+using namespace ns_legacyNN;
 
 NeuralNetwork::NeuralNetwork(const int *nums, int layerCount, Activator activator)
 {
@@ -145,7 +148,6 @@ void NeuralNetwork::tracedFeedForward(double *x)
         }
     }
 
-    /*输出层使用SoftMax激活函数能显著提高分类准确度和缩短训练时间*/
     int i = layerCount-1;
     as[i] = multiplyMV(weights[i], as[i-1], nums[i], nums[i-1]);
     addMMTo(as[i], as[i], biases[i], nums[i], 1);
@@ -205,20 +207,22 @@ void NeuralNetwork::calculateNabla(double *x, double *y)
     }
 }
 
-void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, int trainSetSize, int miniBatchSize)
+void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, size_t trainSetSize, size_t miniBatchSize)
 {
-    unique_ptr<int> indices(new int[trainSetSize]);
-    randomPermutation(indices.get(), trainSetSize);
-    int miniBatchCount = trainSetSize / miniBatchSize;
+    unique_ptr<size_t[]> indices = make_unique_array<size_t[]>(trainSetSize);
+    randomPermutation<size_t>(indices.get(), trainSetSize);
+    size_t miniBatchCount = trainSetSize / miniBatchSize;
     for (int t = 0; t < miniBatchCount; ++t) {
         clearNabla();
 
-        int *ind = indices.get()+t*miniBatchSize;
+        size_t *ind = indices.get()+t*miniBatchSize;
         for (int e = 0; e < miniBatchSize; ++e) {
+            long st = clock();
             double *x = xs.get(ind[e]);
             double *y = ys.get(ind[e]);
 
             calculateNabla(x, y);
+            cout << clock()-st << endl;
         }
 
         /*更新w和b*/
@@ -261,7 +265,7 @@ void NeuralNetwork::initialize()
     std::normal_distribution<double> distribution(0, 1);
     /*随机生成weight*/
     for (int i = 1; i < layerCount; ++i) {
-        double ni = nums[i-1];// sqrt(nums[i-1]);
+        double ni = sqrt(nums[i-1]);
         for (int j = 0; j < nums[i]; ++j) {
             for (int k = 0; k < nums[i - 1]; ++k) {
                 weights[i][j*nums[i-1]+k] = distribution(rd) / ni;
