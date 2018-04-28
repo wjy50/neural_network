@@ -14,6 +14,7 @@ namespace ffw
     {
     private:
         double *weights;
+        double *transposedWeights;
         double *biases;
 
         double *weightGradient;
@@ -28,6 +29,9 @@ namespace ffw
         double (*dActivation_dx)(double);      /*激活函数导函数*/
 
         double regParam;
+
+        int dropoutCount = 0;
+        int *neuronIds;
     public:
         /**
          * 构造全连接层
@@ -64,6 +68,12 @@ namespace ffw
         void updateParameters(size_t batchSize, size_t trainSetSize) override;
 
         double *getDelta() override;
+
+        /**
+         * 设置dropout比例
+         * @param dropoutFraction [0, 1)的浮点数
+         */
+        void setDropoutFraction(double dropoutFraction);
 
         ~FullyConnLayer();
     };
