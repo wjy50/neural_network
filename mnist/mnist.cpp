@@ -17,13 +17,13 @@ void invertEndian(void *p, size_t size)
     }
 }
 
-MNISTImage::MNISTImage(const char *path)
+MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
 {
     tx = ty = 0;
-    FILE *file = fopen(path, "rb");
+    FILE *file = fopen(imagePath, "rb");
     if (file) {
         fseek(file, 0, SEEK_END);
-        size = static_cast<size_t>(ftell(file));
+        imageSize = static_cast<size_t>(ftell(file));
         fseek(file, 0, SEEK_SET);
         unsigned int magic;
         fread(&magic, sizeof(int), 1, file);
@@ -35,30 +35,47 @@ MNISTImage::MNISTImage(const char *path)
             invertEndian(&height, sizeof(int));
             fread(&width, sizeof(int), 1, file);
             invertEndian(&width, sizeof(int));
-            offset = static_cast<size_t>(ftell(file));
-            buffer = new unsigned char[size - offset];
-            image = new double[width*height];
-            fread(buffer, sizeof(char), size-offset, file);
+            imageOffset = static_cast<size_t>(ftell(file));
+            imageBuffer = new unsigned char[imageSize - imageOffset];
+            fread(imageBuffer, sizeof(char), imageSize-imageOffset, file);
         } else {
-            buffer = nullptr;
-            image = nullptr;
+            imageBuffer = nullptr;
         }
         fclose(file);
     } else {
-        buffer = nullptr;
-        image = nullptr;
+        imageBuffer = nullptr;
+    }
+
+    file = fopen(labelPath, "rb");
+    if (file) {
+        fseek(file, 0, SEEK_END);
+        labelSize = static_cast<size_t>(ftell(file));
+        fseek(file, 0, SEEK_SET);
+        unsigned int magic;
+        fread(&magic, sizeof(int), 1, file);
+        if (magic == 0x01080000) {
+            count = 0;
+            fread(&count, sizeof(int), 1, file);
+            invertEndian(&count, sizeof(int));
+            labelOffset = static_cast<size_t>(ftell(file));
+            labelBuffer = new unsigned char[labelSize - labelOffset];
+            fread(labelBuffer, sizeof(char), static_cast<size_t>(labelSize - labelOffset), file);
+        } else {
+            labelBuffer = nullptr;
+        }
+        fclose(file);
     }
 }
 
-void MNISTImage::setTranslation(int x, int y)
+void MNISTDataSet::setTranslation(int x, int y)
 {
     tx = x;
     ty = y;
 }
 
-double* MNISTImage::get(size_t i)
+const double* MNISTDataSet::getData(size_t i)
 {
-    const unsigned char *r = buffer+width*height*i;
+    const unsigned char *r = imageBuffer+width*height*i;
     if (tx != 0 || ty != 0) {
         memset(image, 0, sizeof(double)*width*height);
         int dy = std::max(0, ty);
@@ -78,53 +95,22 @@ double* MNISTImage::get(size_t i)
     return image;
 }
 
-size_t MNISTImage::getSize()
+const double* MNISTDataSet::getLabel(size_t i)
 {
-    return count;
-}
-
-MNISTImage::~MNISTImage()
-{
-    delete[] buffer;
-    delete[] image;
-}
-
-MNISTLabel::MNISTLabel(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    if (file) {
-        fseek(file, 0, SEEK_END);
-        size = static_cast<size_t>(ftell(file));
-        fseek(file, 0, SEEK_SET);
-        unsigned int magic;
-        fread(&magic, sizeof(int), 1, file);
-        if (magic == 0x01080000) {
-            count = 0;
-            fread(&count, sizeof(int), 1, file);
-            invertEndian(&count, sizeof(int));
-            offset = static_cast<size_t>(ftell(file));
-            buffer = new unsigned char[size - offset];
-            fread(buffer, sizeof(char), static_cast<size_t>(size - offset), file);
-        }
-        fclose(file);
-    }
-}
-
-double* MNISTLabel::get(size_t i)
-{
-    unsigned char c = buffer[i];
+    unsigned char c = labelBuffer[i];
     for (int j = 0; j < 10; ++j) {
-        y[j] = c == j ? 1 : 0;
+        label[j] = c == j ? 1 : 0;
     }
-    return y;
+    return label;
 }
 
-size_t MNISTLabel::getSize()
+size_t MNISTDataSet::getSize()
 {
     return count;
 }
 
-MNISTLabel::~MNISTLabel()
+MNISTDataSet::~MNISTDataSet()
 {
-    delete[] buffer;
+    delete[] imageBuffer;
+    delete[] labelBuffer;
 }
