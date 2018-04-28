@@ -42,7 +42,7 @@ namespace ffw
          * @param altTrainSetSize 可选训练集大小，如需取训练集的一部分请传大于零的数
          * @param miniBatchSize mini batch大小
          */
-        void SGD(DataSet &trainSet, DataSet &label, size_t miniBatchSize, size_t altTrainSetSize = 0);
+        void SGD(DataSet &trainSet, size_t miniBatchSize, size_t altTrainSetSize = 0);
 
         /**
          * 前馈计算输出

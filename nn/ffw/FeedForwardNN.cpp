@@ -43,7 +43,7 @@ const double * FeedForwardNN::feedForward(const double *x)
     return a;
 }
 
-void FeedForwardNN::SGD(DataSet &trainSet, DataSet &label, size_t miniBatchSize, size_t altTrainSetSize)
+void FeedForwardNN::SGD(DataSet &trainSet, size_t miniBatchSize, size_t altTrainSetSize)
 {
     size_t trainSetSize = altTrainSetSize > 0 ? altTrainSetSize : trainSet.getSize();
     unique_ptr<size_t[]> indices = make_unique_array<size_t[]>(trainSetSize);
@@ -57,7 +57,7 @@ void FeedForwardNN::SGD(DataSet &trainSet, DataSet &label, size_t miniBatchSize,
         size_t *ind = indices.get()+t*miniBatchSize;
         for (int i = 0; i < miniBatchSize; ++i) {
             //long st = clock();
-            const double *in = trainSet.get(ind[i]);
+            const double *in = trainSet.getData(ind[i]);
             const double *a = in;
             /*for (int j = 0; j < 28; ++j) {
                 for (int k = 0; k < 28; ++k) {
@@ -76,7 +76,7 @@ void FeedForwardNN::SGD(DataSet &trainSet, DataSet &label, size_t miniBatchSize,
             cout << endl;*/
 
             auto layerCount = static_cast<int>(layers.size());
-            layers[layerCount-1]->computeOutputDelta(label.get(ind[i]));
+            layers[layerCount-1]->computeOutputDelta(trainSet.getLabel(ind[i]));
             for (int j = layerCount-2; j >= 0; --j) {
                 layers[j+1]->computeBackPropDelta(layers[j]->getDelta());
                 layers[j]->backPropagateDelta();
