@@ -12,40 +12,49 @@
  * @param p 待反转数据首地址
  * @param size 待反转数据字节数
  */
-void invertEndian(void *p, size_t size);
+void invertEndian(void *p, int size);
 
 class MNISTDataSet : public DataSet
 {
 private:
-    size_t imageOffset, imageSize;
-    size_t labelOffset, labelSize;
-    double image[28*28];
-    double label[10];
+    int imageOffset, imageSize;
+    int labelOffset, labelSize;
     unsigned char *imageBuffer;
     unsigned char *labelBuffer;
-    size_t count;
-    int width, height;
-
-    int tx, ty;
+    int count;
 public:
     explicit MNISTDataSet(const char *imagePath, const char *labelPath);
 
-    /**
-     * 设置图像平移量限制
-     * 取数据时在x和y方向上平移
-     * 用于人工拓展训练集
-     * @param x
-     * @param y
-     */
-    void setTranslation(int x, int y);
+    void getBatch(FloatType *data, FloatType *label, const int *indices, int n) override;
 
-    const double *getData(size_t i) override;
-
-    const double *getLabel(size_t i) override;
-
-    size_t getSize() override;
+    int getSize() override;
 
     ~MNISTDataSet();
+};
+
+class MNISTNormalizer : public DataNormalizer
+{
+private:
+    FloatType avg[28*28];
+    FloatType dev[28*28];
+
+    bool confirmed;
+    bool finished;
+
+    int sampleCount;
+    int sampleCount1;
+public:
+    MNISTNormalizer();
+
+    void add(MNISTDataSet &x, int lim = 0);
+
+    void confirm();
+
+    void div(MNISTDataSet &x, int lim = 0);
+
+    void finish();
+
+    void normalize(FloatType *x) override;
 };
 
 #endif //NEURAL_NETWORK_MNIST_H

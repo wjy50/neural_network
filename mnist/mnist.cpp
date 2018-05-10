@@ -5,25 +5,25 @@
 #include <cstdio>
 #include <random>
 #include <cstring>
+#include <cassert>
 #include "mnist.h"
 
-void invertEndian(void *p, size_t size)
+void invertEndian(void *p, int size)
 {
     auto *c = static_cast<char *>(p);
-    for (int i = 0; i < size >> 1; ++i) {
+    for (int i = 0; i < size / 2; ++i) {
         char tmp = c[i];
-        c[i] = c[size-i-1];
-        c[size-i-1] = tmp;
+        c[i] = c[size - i - 1];
+        c[size - i - 1] = tmp;
     }
 }
 
 MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
 {
-    tx = ty = 0;
     FILE *file = fopen(imagePath, "rb");
     if (file) {
         fseek(file, 0, SEEK_END);
-        imageSize = static_cast<size_t>(ftell(file));
+        imageSize = static_cast<int>(ftell(file));
         fseek(file, 0, SEEK_SET);
         unsigned int magic;
         fread(&magic, sizeof(int), 1, file);
@@ -31,13 +31,14 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
             count = 0;
             fread(&count, sizeof(int), 1, file);
             invertEndian(&count, sizeof(int));
-            fread(&height, sizeof(int), 1, file);
+            /*fread(&height, sizeof(int), 1, file);
             invertEndian(&height, sizeof(int));
             fread(&width, sizeof(int), 1, file);
-            invertEndian(&width, sizeof(int));
-            imageOffset = static_cast<size_t>(ftell(file));
+            invertEndian(&width, sizeof(int));*/
+            fseek(file, 2 * sizeof(int), SEEK_CUR);
+            imageOffset = static_cast<int>(ftell(file));
             imageBuffer = new unsigned char[imageSize - imageOffset];
-            fread(imageBuffer, sizeof(char), imageSize-imageOffset, file);
+            fread(imageBuffer, sizeof(char), static_cast<size_t>(imageSize - imageOffset), file);
         } else {
             imageBuffer = nullptr;
         }
@@ -49,7 +50,7 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
     file = fopen(labelPath, "rb");
     if (file) {
         fseek(file, 0, SEEK_END);
-        labelSize = static_cast<size_t>(ftell(file));
+        labelSize = static_cast<int>(ftell(file));
         fseek(file, 0, SEEK_SET);
         unsigned int magic;
         fread(&magic, sizeof(int), 1, file);
@@ -57,7 +58,7 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
             count = 0;
             fread(&count, sizeof(int), 1, file);
             invertEndian(&count, sizeof(int));
-            labelOffset = static_cast<size_t>(ftell(file));
+            labelOffset = static_cast<int>(ftell(file));
             labelBuffer = new unsigned char[labelSize - labelOffset];
             fread(labelBuffer, sizeof(char), static_cast<size_t>(labelSize - labelOffset), file);
         } else {
@@ -67,44 +68,25 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
     }
 }
 
-void MNISTDataSet::setTranslation(int x, int y)
+void MNISTDataSet::getBatch(FloatType *data, FloatType *label, const int *indices, int n)
 {
-    tx = x;
-    ty = y;
-}
-
-const double* MNISTDataSet::getData(size_t i)
-{
-    const unsigned char *r = imageBuffer+width*height*i;
-    if (tx != 0 || ty != 0) {
-        memset(image, 0, sizeof(double)*width*height);
-        int dy = std::max(0, ty);
-        int dx = std::max(0, tx);
-        int yi = 0;
-        for (int j = dy; j < height-dy; ++j, ++yi) {
-            int xi = 0;
-            for (int k = dx; k < width-dx; ++k) {
-                image[yi*width+xi++] = (double)r[j*width+k] / 0xff;
-            }
+    for (int i = 0; i < n; ++i) {
+        int index = indices[i];
+        const unsigned char *r = imageBuffer + 28 * 28 * index;
+        for (int j = 0; j < 28 * 28; ++j) {
+            data[i * 28 * 28 + j] = static_cast<FloatType>(r[j]) / 0xff;
         }
-    } else {
-        for (int j = 0; j < width * height; ++j) {
-            image[j] = (double)r[j] / 0xff;
+        if (normalizer) normalizer->normalize(data + i * 28 * 28);
+    }
+    if (label) {
+        memset(label, 0, 10 * n * sizeof(FloatType));
+        for (int i = 0; i < n; ++i) {
+            label[10 * i + labelBuffer[indices[i]]] = 1;
         }
     }
-    return image;
 }
 
-const double* MNISTDataSet::getLabel(size_t i)
-{
-    unsigned char c = labelBuffer[i];
-    for (int j = 0; j < 10; ++j) {
-        label[j] = c == j ? 1 : 0;
-    }
-    return label;
-}
-
-size_t MNISTDataSet::getSize()
+int MNISTDataSet::getSize()
 {
     return count;
 }
@@ -113,4 +95,69 @@ MNISTDataSet::~MNISTDataSet()
 {
     delete[] imageBuffer;
     delete[] labelBuffer;
+}
+
+MNISTNormalizer::MNISTNormalizer()
+{
+    memset(avg, 0, 28 * 28 * sizeof(FloatType));
+    memset(dev, 0, 28 * 28 * sizeof(FloatType));
+    confirmed = false;
+    finished = false;
+    sampleCount = 0;
+    sampleCount1 = 0;
+}
+
+void MNISTNormalizer::add(MNISTDataSet &dataSet, int lim)
+{
+    assert(!confirmed && !finished);
+    FloatType x[28 * 28];
+    int count = lim ? lim : dataSet.getSize();
+    sampleCount += count;
+    for (int i = 0; i < count; ++i) {
+        dataSet.getBatch(x, nullptr, &i, 1);
+        for (int j = 0; j < 28 * 28; ++j) {
+            avg[j] += x[j];
+        }
+    }
+}
+
+void MNISTNormalizer::confirm()
+{
+    assert(!confirmed && !finished);
+    confirmed = true;
+    for (FloatType &a : avg) {
+        a /= sampleCount;
+    }
+}
+
+void MNISTNormalizer::div(MNISTDataSet &dataSet, int lim)
+{
+    assert(confirmed && !finished);
+    FloatType x[28 * 28];
+    int count = lim ? lim : dataSet.getSize();
+    sampleCount1 += count;
+    for (int i = 0; i < count; ++i) {
+        dataSet.getBatch(x, nullptr, &i, 1);
+        for (int j = 0; j < 28 * 28; ++j) {
+            FloatType d = x[j] - avg[j];
+            dev[j] += d * d;
+        }
+    }
+}
+
+void MNISTNormalizer::finish()
+{
+    assert(confirmed && !finished && sampleCount == sampleCount1);
+    finished = true;
+    for (FloatType &d : dev) {
+        d = d == 0 ? 1 : std::sqrt(d / sampleCount);
+    }
+}
+
+void MNISTNormalizer::normalize(FloatType *x)
+{
+    assert(confirmed && finished);
+    for (int i = 0; i < 28 * 28; ++i) {
+        x[i] = (x[i] - avg[i]) / dev[i];
+    }
 }

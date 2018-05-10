@@ -10,22 +10,44 @@
 class CIFARDataSet : public DataSet
 {
 private:
-    size_t size;
+    int size;
 
-    size_t count;
+    int count;
 
     unsigned char *buffer;
-
-    double image[32*32*3];
-    double label[10];
 public:
-    explicit CIFARDataSet(const char *path);
+    explicit CIFARDataSet(const char **path, int n);
 
-    size_t getSize() override;
+    int getSize() override;
 
-    const double *getData(size_t i) override;
+    void getBatch(FloatType *data, FloatType *label, const int *indices, int n) override;
 
-    const double *getLabel(size_t i) override;
+    /*void normalize();*/
+};
+
+class CIFARNormalizer : public DataNormalizer
+{
+private:
+    FloatType avg[32*32*3];
+    FloatType dev[32*32*3];
+
+    bool confirmed;
+    bool finished;
+
+    int sampleCount;
+    int sampleCount1;
+public:
+    CIFARNormalizer();
+
+    void add(CIFARDataSet &dataSet);
+
+    void div(CIFARDataSet &dataSet);
+
+    void confirm();
+
+    void finish();
+
+    void normalize(FloatType *x) override;
 };
 
 #endif //NEURAL_NETWORK_CIFAR_H
