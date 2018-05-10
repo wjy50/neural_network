@@ -10,7 +10,7 @@ using namespace std;
 #include <cmath>
 #include <random>
 
-#include "NeuralNetwork.h"
+#include "NeuralNetwork.h.bak"
 #include "../math/Matrix.h"
 #include "../math/permutation.h"
 #include "../math/Activator.h"
@@ -135,7 +135,7 @@ double* NeuralNetwork::feedForward(double *x)
     return a;
 }
 
-void NeuralNetwork::tracedFeedForward(double *x)
+void NeuralNetwork::tracedFeedForward(const double *x)
 {
     as[0] = x;
     for (int i = 1; i < layerCount-1; ++i) { /*对输出层使用SoftMax激活函数，需要特殊处理*/
@@ -177,7 +177,7 @@ void NeuralNetwork::clearNabla()
     }
 }
 
-void NeuralNetwork::calculateNabla(double *x, double *y)
+void NeuralNetwork::calculateNabla(const double *x, const double *y)
 {
     tracedFeedForward(x);
 
@@ -207,7 +207,7 @@ void NeuralNetwork::calculateNabla(double *x, double *y)
     }
 }
 
-void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, size_t trainSetSize, size_t miniBatchSize)
+void NeuralNetwork::SGD(MNISTDataSet &xs, size_t trainSetSize, size_t miniBatchSize)
 {
     unique_ptr<size_t[]> indices = make_unique_array<size_t[]>(trainSetSize);
     randomPermutation<size_t>(indices.get(), trainSetSize);
@@ -218,8 +218,8 @@ void NeuralNetwork::SGD(MNISTImage &xs, MNISTLabel &ys, size_t trainSetSize, siz
         size_t *ind = indices.get()+t*miniBatchSize;
         for (int e = 0; e < miniBatchSize; ++e) {
             long st = clock();
-            double *x = xs.get(ind[e]);
-            double *y = ys.get(ind[e]);
+            const double *x = xs.getData(ind[e]);
+            const double *y = xs.getLabel(ind[e]);
 
             calculateNabla(x, y);
             cout << clock()-st << endl;

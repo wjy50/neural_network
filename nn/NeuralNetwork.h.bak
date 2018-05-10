@@ -57,7 +57,7 @@ namespace ns_legacyNN
          * 同时保留每层的带权输出z和激活输出a
          * @param x 输入向量
          */
-        void tracedFeedForward(double x[]);
+        void tracedFeedForward(const double *x);
 
         /**
          * 反向传播求每层的δ
@@ -72,7 +72,7 @@ namespace ns_legacyNN
          * @param x 输入
          * @param y 期望的输出
          */
-        void calculateNabla(double *x, double *y);
+        void calculateNabla(const double *x, const double *y);
 
         void clearNabla();
     public:
@@ -117,7 +117,7 @@ namespace ns_legacyNN
          * @param trainSetSize 训练集大小
          * @param miniBatchSize mini batch大小
          */
-        void SGD(MNISTImage &xs, MNISTLabel &ys, size_t trainSetSize, size_t miniBatchSize);
+        void SGD(MNISTDataSet &xs, size_t trainSetSize, size_t miniBatchSize);
 
         /**
          * 接受输入并计算输出
