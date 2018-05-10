@@ -21,6 +21,8 @@ namespace ffw
     private:
         int inputWidth, inputHeight;
         int inputSize;
+        int windowWidth, windowHeight;
+        int windowSize;
         int xStride, yStride;
         int outputWidth, outputHeight;
         int outputSize;
@@ -28,11 +30,13 @@ namespace ffw
 
         PoolingMethod poolingMethod;
 
-        double *output;
+        FloatType *output;
         int *xOffset;
         int *yOffset;
 
-        double *delta;
+        FloatType *delta;
+
+        int miniBatchSize;
 
         /**
          * 找出数组中最大元素，返回下标
@@ -40,31 +44,39 @@ namespace ffw
          * @param n 数组长度
          * @return 最大元素下标
          */
-        int indexOfMax(const double *arr, int n);
+        int indexOfMax(const FloatType *arr, int n);
 
         /**
          * 最大值池化
          * @param x 输入
+         * @param output 输出
+         * @param xOffset x位置记录
+         * @param yOffset y位置记录
          */
-        void maxPooling(const double *x);
+        void maxPooling(const FloatType *x, FloatType *output, int *xOffset, int *yOffset);
 
         /**
          * 平均值池化
          * @param x 输入
+         * @param output 输出
          */
-        void meanPooling(const double *x);
+        void meanPooling(const FloatType *x, FloatType *output);
 
         /**
          * 最大值池化下反向传播
          * @param backPropDelta 前一层误差项容器
+         * @param delta 本层误差项
+         * @param xOffset x位置记录
+         * @param yOffset y位置记录
          */
-        void maxBackProp(double *backPropDelta);
+        void maxBackProp(FloatType *backPropDelta, const FloatType *delta, int *xOffset, int *yOffset);
 
         /**
          * 平均值池化下反向传播
          * @param backPropDelta 前一层误差项容器
+         * @param delta 本层误差项
          */
-        void meanBackProp(double *backPropDelta);
+        void meanBackProp(FloatType *backPropDelta, const FloatType *delta);
     public:
         /**
          * 构造池化层
@@ -75,27 +87,28 @@ namespace ffw
          * @param channel 通道数
          * @param poolingMethod 池化方法
          */
-        PoolingLayer(int inputWidth, int inputHeight, int xStride, int yStride, int channel, PoolingMethod poolingMethod);
+        PoolingLayer(int inputWidth, int inputHeight, int windowWidth, int windowHeight, int xStride, int yStride, int channel,
+                     PoolingMethod poolingMethod);
 
-        void initialize() override;
+        void initialize(int miniBatchSize) override;
 
-        void feedForward(const double *x) override;
+        void feedForward(const FloatType *x) override;
 
-        const double * getWeightedOutput() override;
+        void feedForwardForOptimization(const FloatType *x) override;
 
-        const double * getActivationOutput() override;
+        const FloatType * getWeightedOutput() override;
 
-        void computeOutputDelta(const double *y) override;
+        const FloatType * getActivationOutput() override;
 
-        void computeBackPropDelta(double *backPropDelta) override;
+        void computeOutputDelta(const FloatType *y) override;
+
+        void computeBackPropDelta(FloatType *backPropDelta) override;
 
         void backPropagateDelta() override;
 
-        void clearGradient() override;
+        void computeGradient(const FloatType *prevActivation) override;
 
-        void accumulateGradient(const double *prevActivation) override;
-
-        void updateParameters(size_t batchSize, size_t trainSetSize) override;
+        void updateParameters() override;
 
         /**
          * 获取输出矩阵的宽度（列数）
@@ -115,7 +128,11 @@ namespace ffw
          */
         int getChannelCount();
 
-        double *getDelta() override;
+        FloatType *getDelta() override;
+
+        int getWeightCount() override;
+
+        int getBiasCount() override;
 
         ~PoolingLayer();
     };

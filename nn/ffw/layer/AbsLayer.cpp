@@ -8,7 +8,7 @@ using namespace ffw;
 
 AbsLayer::AbsLayer(int neuronCount, int inputDim)
 {
-    learningRate = 0;
+    optimizer = nullptr;
     this->neuronCount = neuronCount;
     this->inputDim = inputDim;
 }
@@ -18,9 +18,9 @@ int AbsLayer::getNeuronCount()
     return neuronCount;
 }
 
-void AbsLayer::setLearningRate(double learningRate)
+void AbsLayer::setOptimizer(AbsOptimizer *optimizer)
 {
-    this->learningRate = learningRate;
+    this->optimizer = optimizer;
 }
 
 int AbsLayer::getInputDimension()

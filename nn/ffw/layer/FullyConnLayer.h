@@ -13,25 +13,26 @@ namespace ffw
     class FullyConnLayer : public AbsLayer
     {
     private:
-        double *weights;
-        double *transposedWeights;
-        double *biases;
+        FloatType *weights;
+        FloatType *biases;
 
-        double *weightGradient;
-        double *biasGradient;
+        FloatType *weightGradient;
+        FloatType *biasGradient;
 
-        double *z;
-        double *a;
-        double *delta;
+        FloatType *z;
+        FloatType *a;
+        FloatType *delta;
 
         Activator activator;
-        double (*activation)(double);          /*激活函数*/
-        double (*dActivation_dx)(double);      /*激活函数导函数*/
-
-        double regParam;
+        FloatType (*activation)(FloatType);          /*激活函数*/
+        FloatType (*dActivation_dx)(FloatType);      /*激活函数导函数*/
 
         int dropoutCount = 0;
         int *neuronIds;
+
+        int weightCount;
+
+        int miniBatchSize;
     public:
         /**
          * 构造全连接层
@@ -41,39 +42,37 @@ namespace ffw
          */
         FullyConnLayer(int neuronCount, int inputDim, Activator activator);
 
-        void initialize() override;
+        void initialize(int miniBatchSize) override;
 
-        /**
-         * 设置L2正规化参数
-         * @param regParam
-         */
-        void setRegParam(double regParam);
+        void feedForward(const FloatType *x) override;
 
-        void feedForward(const double *x) override;
+        void feedForwardForOptimization(const FloatType *x) override;
 
-        const double * getWeightedOutput() override;
+        const FloatType * getWeightedOutput() override;
 
-        const double * getActivationOutput() override;
+        const FloatType * getActivationOutput() override;
 
-        void computeOutputDelta(const double *y) override;
+        void computeOutputDelta(const FloatType *y) override;
 
-        void computeBackPropDelta(double *backPropDelta) override;
+        void computeBackPropDelta(FloatType *backPropDelta) override;
 
         void backPropagateDelta() override;
 
-        void clearGradient() override;
+        void computeGradient(const FloatType *prevActivation) override;
 
-        void accumulateGradient(const double *prevActivation) override;
+        void updateParameters() override;
 
-        void updateParameters(size_t batchSize, size_t trainSetSize) override;
-
-        double *getDelta() override;
+        FloatType *getDelta() override;
 
         /**
          * 设置dropout比例
          * @param dropoutFraction [0, 1)的浮点数
          */
-        void setDropoutFraction(double dropoutFraction);
+        void setDropoutFraction(FloatType dropoutFraction);
+
+        int getWeightCount() override;
+
+        int getBiasCount() override;
 
         ~FullyConnLayer();
     };

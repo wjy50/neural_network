@@ -12,9 +12,13 @@
 using namespace ffw;
 using namespace std;
 
-ConvLayer::ConvLayer(int inputWidth, int inputHeight, int inputChannel, int kernelWidth, int kernelHeight,
-                     int kernelCount, int xStride, int yStride, int xPadding, int yPadding, Activator activator)
-        : AbsLayer(((xPadding * 2 + inputWidth - kernelWidth) / xStride + 1) * ((yPadding * 2 + inputHeight - kernelHeight) / yStride + 1) * kernelCount, inputChannel * inputWidth * inputHeight)
+ConvLayer::ConvLayer(int inputWidth, int inputHeight, int inputChannel, int kernelWidth,
+                     int kernelHeight,
+                     int kernelCount, int xStride, int yStride, int xPadding, int yPadding,
+                     Activator activator)
+        : AbsLayer(((xPadding * 2 + inputWidth - kernelWidth) / xStride + 1) *
+                   ((yPadding * 2 + inputHeight - kernelHeight) / yStride + 1) * kernelCount,
+                   inputChannel * inputWidth * inputHeight)
 {
     this->inputWidth = inputWidth;
     this->inputHeight = inputHeight;
@@ -31,68 +35,108 @@ ConvLayer::ConvLayer(int inputWidth, int inputHeight, int inputChannel, int kern
     this->kernelCount = kernelCount;
     kernelSize = kernelWidth * kernelHeight;
 
-    outputWidth = (xPadding*2 + inputWidth - kernelWidth) / xStride + 1;
-    outputHeight = (yPadding*2 + inputHeight - kernelHeight) / yStride + 1;
+    outputWidth = (xPadding * 2 + inputWidth - kernelWidth) / xStride + 1;
+    outputHeight = (yPadding * 2 + inputHeight - kernelHeight) / yStride + 1;
     outputSize = outputWidth * outputHeight;
 
-    kernels = new double[kernelSize * inputChannel * kernelCount];
-    biases = new double[kernelCount];
+    weightCount = kernelSize * inputChannel * kernelCount;
+    kernels = new FloatType[weightCount];
+    biases = new FloatType[kernelCount]();
 
-    weightGradient = new double[kernelSize * inputChannel * kernelCount];
-    biasGradient = new double[kernelCount];
+    weightGradient = new FloatType[weightCount];
+    biasGradient = new FloatType[kernelCount];
 
-    z = new double[outputSize * kernelCount];
-    a = new double[outputSize * kernelCount];
+    z = nullptr;
+    a = nullptr;
 
-    delta = new double[outputSize * kernelCount];
+    delta = nullptr;
 
     assert(activator != OUTPUT_ACTIVATOR);/*（目前）卷积层不能作为输出层*/
     this->activator = activator;
     activation = ACTIVATION_FUNCTIONS[activator];
     dActivation_dx = D_ACTIVATION_FUNCTIONS[activator];
 
-    regParam = 0;
+    right = inputWidth + xPadding - kernelWidth;
+    bottom = inputHeight + yPadding - kernelHeight;
 }
 
-void ConvLayer::initialize()
+void ConvLayer::initialize(int miniBatchSize)
 {
-    memset(biases, 0, kernelCount * sizeof(double));
+    memset(biases, 0, kernelCount * sizeof(FloatType));
 
     random_device rd;
-    normal_distribution<double> distribution(0, ((double)2/sqrt(inputDim)));
-    for (int i = 0; i < kernelSize * inputChannel * kernelCount; ++i) {
+    normal_distribution<FloatType> distribution(0, sqrt(static_cast<FloatType>(2) / inputDim));
+    int l = kernelSize * inputChannel * kernelCount;
+    for (int i = 0; i < l; ++i) {
         kernels[i] = distribution(rd);
+    }
+
+    this->miniBatchSize = miniBatchSize;
+    z = new FloatType[outputSize * kernelCount * miniBatchSize];
+    a = new FloatType[outputSize * kernelCount * miniBatchSize];
+    delta = new FloatType[outputSize * kernelCount * miniBatchSize];
+}
+
+#define NEW_CONV
+
+void ConvLayer::convolution(const FloatType *input, const FloatType *kernel, FloatType *out)
+{
+    for (int i = 0; i < kernelHeight; ++i) {
+        int jLim = min(inputHeight - 1, bottom + i);
+        int kerRowOffset = i * kernelWidth;
+        int oy = 0, j = i - yPadding;
+        while (j < 0) {
+            oy++;
+            j += yStride;
+        }
+        for (; j <= jLim; j += yStride, oy++) {
+            int inRowOffset = j * inputWidth;
+            int outRowOffset = oy * outputWidth;
+            for (int l = -xPadding, ox = 0; l <= right; l += xStride, ox++) {
+                FloatType sum = 0;
+                for (int m = max(0, -l); m < kernelWidth; ++m) {
+                    sum += kernel[kerRowOffset + m] * input[inRowOffset + l + m];
+                }
+                out[outRowOffset + ox] += sum;
+            }
+        }
     }
 }
 
-void ConvLayer::feedForward(const double *x)
+void ConvLayer::feedForward(const FloatType *x)
 {
-    for (int i = 0; i < kernelCount; ++i) {
-        double *out = z + i * outputSize;
+    FloatType *out = a;
+    for (int i = 0; i < kernelCount; ++i, out += outputSize) {
+        const FloatType b = biases[i];
         for (int j = 0; j < outputSize; ++j) {
-            out[j] = biases[i];
+            out[j] = b;
         }
     }
-    int right = inputWidth + xPadding - kernelWidth;
-    int bottom = inputHeight + yPadding - kernelHeight;
-    const double *ker = kernels;
+#ifdef NEW_CONV
+    const FloatType *ker = kernels;
+    out = a;
+    for (int i = 0; i < kernelCount; ++i, out += outputSize) {
+        for (int ch = 0; ch < inputChannel; ++ch, ker += kernelSize) {
+            convolution(x + ch * inputSize, ker, out);
+        }
+    }
+#else
+    const FloatType *ker = kernels;
     for (int i = 0; i < kernelCount; ++i) {
-        double *out = z + i * outputSize;
+        FloatType *out = z + i * outputSize;
         for (int j = 0; j < inputChannel; ++j) {
-            const double *in = x + j * inputSize;
+            const FloatType *in = x + j * inputSize;
             int oy = 0;
             for (int k = -yPadding; k <= bottom; k += yStride, oy++) {
                 int ox = 0;
                 for (int l = -xPadding; l <= right; l += xStride, ox++) {
-                    int inputX = max(l, 0);
-                    int inputXLim = min(l+kernelWidth, inputWidth);
-                    int inputY = max(k, 0);
-                    int inputYLim = min(k+kernelHeight, inputHeight);
+                    int inputX = l < 0 ? 0 : l;
                     int kerX = inputX - l;
+                    int inputY = k < 0 ? 0 : k;
                     int kerY = inputY - k;
-                    int w = inputXLim - inputX;
-                    int h = inputYLim - inputY;
-                    double sum = 0;
+                    const int w = min(l + kernelWidth, inputWidth) - inputX;
+                    const int h = min(k + kernelHeight, inputHeight) - inputY;
+                    FloatType sum = 0;
                     for (int m = 0; m < h; ++m) {
                         for (int n = 0; n < w; ++n) {
                             sum += ker[(kerY+m)*kernelWidth+kerX+n] * in[(inputY+m)*inputWidth+inputX+n];
@@ -104,55 +148,99 @@ void ConvLayer::feedForward(const double *x)
             ker += kernelSize;
         }
     }
+#endif
     for (int i = 0; i < neuronCount; ++i) {
+        a[i] = activation(a[i]);
+    }
+}
+
+void ConvLayer::feedForwardForOptimization(const FloatType *x)
+{
+    FloatType *out = z;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        for (int i = 0; i < kernelCount; ++i, out += outputSize) {
+            const FloatType b = biases[i];
+            for (int j = 0; j < outputSize; ++j) {
+                out[j] = b;
+            }
+        }
+    }
+
+    out = z;
+    const FloatType *curX = x;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        const FloatType *ker = kernels;
+        for (int i = 0; i < kernelCount; ++i, out += outputSize) {
+            for (int ch = 0; ch < inputChannel; ++ch, ker += kernelSize) {
+                convolution(curX + ch * inputSize, ker, out);
+            }
+        }
+        curX += inputDim;
+    }
+
+    for (int i = 0; i < neuronCount * miniBatchSize; ++i) {
         a[i] = activation(z[i]);
     }
-    /*for (int i = 0; i < outputHeight; ++i) {
-        for (int j = 0; j < outputWidth; ++j) {
-            cout << (int)(a[i*outputWidth+j]*10) << " ";
-        }
-        cout << endl;
-    }
-    cout << endl;
-    for (int i = 0; i < outputHeight; ++i) {
-        for (int j = 0; j < outputWidth; ++j) {
-            cout << ((int)(a[i*outputWidth+j]*10) == 0 ? ' ' : '0') << " ";
-        }
-        cout << endl;
-    }
-    cout << endl;*/
 }
 
 void ConvLayer::backPropagateDelta()
 {
-    for (int i = 0; i < neuronCount; ++i) {
-        delta[i] = delta[i] * dActivation_dx(z[i]);
+    for (int i = 0; i < neuronCount * miniBatchSize; ++i) {
+        delta[i] *= dActivation_dx(z[i]);
     }
 }
 
-void ConvLayer::computeBackPropDelta(double *backPropDelta)
+void ConvLayer::computeBackPropDelta(FloatType *backPropDelta)
 {
-    memset(backPropDelta, 0, inputDim * sizeof(double));
-    int right = inputWidth + xPadding - kernelWidth;
-    int bottom = inputHeight + yPadding - kernelHeight;
-    const double *ker = kernels;
+    memset(backPropDelta, 0, inputDim * miniBatchSize * sizeof(FloatType));
+#ifdef NEW_CONV
+    const FloatType *curDelta = delta;
+    FloatType *curBPD = backPropDelta;
+    for (int b = 0; b < miniBatchSize; ++b) {
+        const FloatType *ker = kernels;
+        for (int i = 0; i < kernelCount; ++i, curDelta += outputSize) {
+            for (int ch = 0; ch < inputChannel; ++ch, ker += kernelSize) {
+                FloatType *back = curBPD + ch * inputSize;
+                for (int j = 0; j < kernelHeight; ++j) { /*kernel的第j行与输入第k行*/
+                    int kLim = min(inputHeight - 1, bottom + j);
+                    int kerRowOffset = j * kernelWidth;
+                    int oy = 0, k = j - yPadding;
+                    while (k < 0) {
+                        oy++;
+                        k += yStride;
+                    }
+                    for (; k <= kLim; k += yStride, oy++) {
+                        int inRowOffset = k * inputWidth;
+                        int fromRowOffset = oy * outputWidth;
+                        for (int l = -xPadding, ox = 0; l <= right; l += xStride, ox++) {
+                            FloatType di = curDelta[fromRowOffset + ox];
+                            for (int m = max(0, -l); m < kernelWidth; ++m) {
+                                back[inRowOffset + l + m] += ker[kerRowOffset + m] * di;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        curBPD += inputDim;
+    }
+#else
+    const FloatType *ker = kernels;
     for (int i = 0; i < kernelCount; ++i) {
-        const double *from = delta + i * outputSize;
+        const FloatType *from = delta + i * outputSize;
         for (int j = 0; j < inputChannel; ++j) {
-            double *back = backPropDelta + j * inputSize;
+            FloatType *back = backPropDelta + j * inputSize;
             int oy = 0;
             for (int k = -yPadding; k <= bottom; k += yStride, oy++) {
                 int ox = 0;
                 for (int l = -xPadding; l <= right; l += xStride, ox++) {
-                    int inputX = max(l, 0);
-                    int inputXLim = min(l+kernelWidth, inputWidth);
-                    int inputY = max(k, 0);
-                    int inputYLim = min(k+kernelHeight, inputHeight);
+                    int inputX = l < 0 ? 0 : l;
                     int kerX = inputX - l;
+                    int inputY = k < 0 ? 0 : k;
                     int kerY = inputY - k;
-                    int w = inputXLim - inputX;
-                    int h = inputYLim - inputY;
-                    double di = from[oy*outputWidth+ox];
+                    const int w = min(l+kernelWidth, inputWidth) - inputX;
+                    const int h = min(k+kernelHeight, inputHeight) - inputY;
+                    FloatType di = from[oy*outputWidth+ox];
                     for (int m = 0; m < h; ++m) {
                         for (int n = 0; n < w; ++n) {
                             back[(inputY+m)*inputWidth+inputX+n] += ker[(kerY+m)*kernelWidth+kerX+n] * di;
@@ -163,42 +251,74 @@ void ConvLayer::computeBackPropDelta(double *backPropDelta)
             ker += kernelSize;
         }
     }
+#endif
 }
 
-void ConvLayer::clearGradient()
+void ConvLayer::computeGradient(const FloatType *prevActivation)
 {
-    memset(biasGradient, 0, kernelCount * sizeof(double));
-    memset(weightGradient, 0, kernelSize * inputChannel * kernelCount * sizeof(double));
-}
-
-void ConvLayer::accumulateGradient(const double *prevActivation)
-{
-    for (int i = 0; i < kernelCount; ++i) {
-        const double *from = delta + i * outputSize;
-        for (int j = 0; j < outputSize; ++j) {
-            biasGradient[i] += from[j];
+    memset(biasGradient, 0, kernelCount * sizeof(FloatType));
+    memset(weightGradient, 0, kernelSize * inputChannel * kernelCount * sizeof(FloatType));
+    const FloatType *curDelta = delta;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        for (int i = 0; i < kernelCount; ++i, curDelta += outputSize) {
+            FloatType sum = 0;
+            for (int j = 0; j < outputSize; ++j) {
+                sum += curDelta[j];
+            }
+            biasGradient[i] += sum;
         }
     }
-    int right = inputWidth + xPadding - kernelWidth;
-    int bottom = inputHeight + yPadding - kernelHeight;
-    double *kerG = weightGradient;
     for (int i = 0; i < kernelCount; ++i) {
-        const double *from = delta + i * outputSize;
+        biasGradient[i] /= miniBatchSize;
+    }
+#ifdef NEW_CONV
+    curDelta = delta;
+    const FloatType *curPA = prevActivation;
+    for (int b = 0; b < miniBatchSize; ++b) {
+        FloatType *kerG = weightGradient;
+        for (int i = 0; i < kernelCount; ++i, curDelta += outputSize) {
+            for (int ch = 0; ch < inputChannel; ++ch, kerG += kernelSize) {
+                const FloatType *pa = curPA + ch * inputSize;
+                for (int j = 0; j < kernelHeight; ++j) { /*kernel的第j行与输入第k行*/
+                    int kLim = min(inputHeight - 1, bottom + j);
+                    int kerRowOffset = j * kernelWidth;
+                    int oy = 0, k = j - yPadding;
+                    while (k < 0) {
+                        oy++;
+                        k += yStride;
+                    }
+                    for (; k <= kLim; k += yStride, oy++) {
+                        int inRowOffset = k * inputWidth;
+                        int fromRowOffset = oy * outputWidth;
+                        for (int l = -xPadding, ox = 0; l <= right; l += xStride, ox++) {
+                            FloatType di = curDelta[fromRowOffset + ox];
+                            for (int m = max(0, -l); m < kernelWidth; ++m) {
+                                kerG[kerRowOffset + m] += di * pa[inRowOffset + l + m];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        curPA += inputDim;
+    }
+#else
+    FloatType *kerG = weightGradient;
+    for (int i = 0; i < kernelCount; ++i) {
+        const FloatType *from = delta + i * outputSize;
         for (int j = 0; j < inputChannel; ++j) {
-            const double *pa = prevActivation + j * inputSize;
+            const FloatType *pa = prevActivation + j * inputSize;
             int oy = 0;
             for (int k = -yPadding; k <= bottom; k += yStride, oy++) {
                 int ox = 0;
                 for (int l = -xPadding; l <= right; l += xStride, ox++) {
-                    int inputX = max(l, 0);
-                    int inputXLim = min(l+kernelWidth, inputWidth);
-                    int inputY = max(k, 0);
-                    int inputYLim = min(k+kernelHeight, inputHeight);
+                    int inputX = l < 0 ? 0 : l;
                     int kerX = inputX - l;
+                    int inputY = k < 0 ? 0 : k;
                     int kerY = inputY - k;
-                    int w = inputXLim - inputX;
-                    int h = inputYLim - inputY;
-                    double di = from[oy*outputWidth+ox];
+                    const int w = min(l+kernelWidth, inputWidth) - inputX;
+                    const int h = min(k+kernelHeight, inputHeight) - inputY;
+                    FloatType di = from[oy*outputWidth+ox];
                     for (int m = 0; m < h; ++m) {
                         for (int n = 0; n < w; ++n) {
                             kerG[(kerY+m)*kernelWidth+kerX+n] += di * pa[(inputY+m)*inputWidth+inputX+n];
@@ -209,33 +329,25 @@ void ConvLayer::accumulateGradient(const double *prevActivation)
             kerG += kernelSize;
         }
     }
+#endif
+    for (int i = 0; i < weightCount; ++i) {
+        weightGradient[i] /= miniBatchSize;
+    }
 }
 
-void ConvLayer::updateParameters(size_t batchSize, size_t trainSetSize)
+void ConvLayer::updateParameters()
 {
-    double eta = -learningRate;
-    for (int i = 0; i < kernelCount; ++i) {
-        biases[i] += eta * biasGradient[i] / batchSize;
-    }
-    double ws = (1 + eta * regParam / trainSetSize);
-    for (int i = 0; i < kernelSize * inputChannel * kernelCount; ++i) {
-        kernels[i] = kernels[i] * ws + eta * weightGradient[i] / batchSize;
-    }
+    optimizer->update(kernels, weightGradient, biases, biasGradient);
 }
 
-const double * ConvLayer::getWeightedOutput()
+const FloatType *ConvLayer::getWeightedOutput()
 {
     return z;
 }
 
-const double * ConvLayer::getActivationOutput()
+const FloatType *ConvLayer::getActivationOutput()
 {
     return a;
-}
-
-void ConvLayer::setRegParam(double regParam)
-{
-    this->regParam = regParam;
 }
 
 int ConvLayer::getOutputWidth()
@@ -253,14 +365,25 @@ int ConvLayer::getKernelCount()
     return kernelCount;
 }
 
-double* ConvLayer::getDelta()
+FloatType *ConvLayer::getDelta()
 {
     return delta;
 }
 
-void ConvLayer::computeOutputDelta(const double *y)
+int ConvLayer::getWeightCount()
+{
+    return weightCount;
+}
+
+int ConvLayer::getBiasCount()
+{
+    return kernelCount;
+}
+
+void ConvLayer::computeOutputDelta(const FloatType *y)
 {
     //（目前）卷积层不能作为输出层，什么都不做
+    assert(false);
 }
 
 ConvLayer::~ConvLayer()

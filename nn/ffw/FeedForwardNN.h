@@ -20,6 +20,10 @@ namespace ffw
         vector<AbsLayer*> layers;
 
         bool built;
+
+        FloatType *inputs, *labels;
+
+        int miniBatchSize;
     public:
         FeedForwardNN();
 
@@ -33,7 +37,7 @@ namespace ffw
          * 完成网络的建立
          * 调用后不允许再调用addLayer
          */
-        void buildUpNetwork();
+        void buildUpNetwork(int miniBatchSize);
 
         /**
          * 随机梯度下降
@@ -42,14 +46,16 @@ namespace ffw
          * @param altTrainSetSize 可选训练集大小，如需取训练集的一部分请传大于零的数
          * @param miniBatchSize mini batch大小
          */
-        void SGD(DataSet &trainSet, size_t miniBatchSize, size_t altTrainSetSize = 0);
+        void SGD(DataSet &trainSet, int altTrainSetSize);
 
         /**
          * 前馈计算输出
          * @param x 符合输入要求的输入向量/矩阵
          * @return 计算结果，调用者不能delete[]
          */
-        const double * feedForward(const double *x);
+        const FloatType * feedForward(const FloatType *x);
+
+        ~FeedForwardNN();
     };
 }
 

@@ -26,159 +26,226 @@ FullyConnLayer::FullyConnLayer(int neuronCount, int inputDim, Activator activato
         dActivation_dx = nullptr;
     }
 
-    weights = new double[neuronCount * inputDim];
-    weightGradient = new double[neuronCount * inputDim];
-    transposedWeights = nullptr;
+    weightCount = neuronCount * inputDim;
+    weights = new FloatType[weightCount];
+    weightGradient = new FloatType[weightCount];
 
-    biases = new double[neuronCount];
     /*bias全部置0*/
-    memset(biases, 0, sizeof(double) * neuronCount);
-    biasGradient = new double[neuronCount];
+    biases = new FloatType[neuronCount]();
+    biasGradient = new FloatType[neuronCount];
 
-    z = new double[neuronCount];
-    a = new double[neuronCount];
+    z = nullptr;
+    a = nullptr;
 
-    delta = new double[neuronCount];
+    delta = nullptr;
 
-    regParam = 0;
     dropoutCount = 0;
     neuronIds = nullptr;
 }
 
-void FullyConnLayer::setRegParam(double regParam)
-{
-    this->regParam = regParam;
-}
-
-void FullyConnLayer::initialize()
+void FullyConnLayer::initialize(int miniBatchSize)
 {
     random_device rd;
-    normal_distribution<double> distribution(0, sqrt((double)2/inputDim));
+    normal_distribution<FloatType> distribution(0, sqrt(static_cast<FloatType>(2)/inputDim));
     /*随机生成weight*/
     for (int i = 0; i < neuronCount * inputDim; ++i) {
         weights[i] = distribution(rd);
     }
+
+    this->miniBatchSize = miniBatchSize;
+    z = new FloatType[neuronCount * miniBatchSize];
+    a = new FloatType[neuronCount * miniBatchSize];
+
+    delta = new FloatType[neuronCount * miniBatchSize];
 }
 
-void FullyConnLayer::feedForward(const double *x)
+void FullyConnLayer::feedForward(const FloatType *x)
+{
+    //此时不能有dropout
+    multiplyMVTo(a, weights, x, neuronCount, inputDim);
+
+    if (activator == OUTPUT_ACTIVATOR) {
+        if (neuronCount > 1) {
+            for (int i = 0; i < neuronCount; ++i) {
+                a[i] += biases[i];
+            }
+            softMax(a, neuronCount);
+        }
+        else {
+            a[0] = sigmoid(a[0] + biases[0]);
+        }
+    } else {
+        for (int i = 0; i < neuronCount; ++i) {
+            a[i] = activation(a[i] + biases[i]);
+        }
+    }
+}
+
+void FullyConnLayer::feedForwardForOptimization(const FloatType *x)
 {
     if (dropoutCount == 0) {
-        multiplyMVTo(z, weights, x, neuronCount, inputDim);
+        FloatType *curZ = z;
+        const FloatType *curX = x;
+        for (int m = 0; m < miniBatchSize; ++m) {
+            multiplyMVTo(curZ, weights, curX, neuronCount, inputDim);
+            curX += inputDim;
+            curZ += neuronCount;
+        }
 
         if (activator == OUTPUT_ACTIVATOR) {
-            if (neuronCount > 1) softMaxInto(a, z, neuronCount);
+            if (neuronCount > 1) {
+                FloatType *curA = a;
+                curZ = z;
+                for (int m = 0; m < miniBatchSize; ++m) {
+                    for (int i = 0; i < neuronCount; ++i) {
+                        curZ[i] += biases[i];
+                    }
+                    softMaxInto(curA, curZ, neuronCount);
+                    curA += neuronCount;
+                    curZ += neuronCount;
+                }
+            }
             else {
-                for (int i = 0; i < neuronCount; ++i) {
-                    a[i] = sigmoid(z[i]);
+                for (int i = 0; i < miniBatchSize; ++i) {
+                    a[i] = sigmoid(z[i] += biases[0]);
                 }
             }
         } else {
-            for (int i = 0; i < neuronCount; ++i) {
-                a[i] = activation(z[i]);
+            FloatType *curA = a;
+            curZ = z;
+            for (int m = 0; m < miniBatchSize; ++m) {
+                for (int i = 0; i < neuronCount; ++i) {
+                    curA[i] = activation(curZ[i] += biases[i]);
+                }
+                curA += neuronCount;
+                curZ += neuronCount;
             }
         }
     } else {
         if (!neuronIds) neuronIds = new int[neuronCount];
         randomPermutation<int>(neuronIds, neuronCount);
-        /*for (int i = 0; i < neuronCount; ++i) {
-            cout << neuronIds[i] << ' ';
-        }
-        cout << endl;*/
 
         int begin = 0;
-        for (int i = 0; i < neuronCount; ++i) {
-            if (neuronIds[i] < dropoutCount) {
-                z[i] = 0;
-                if (i > begin) {
-                    multiplyMVTo(z + begin, weights + begin * inputDim, x, i - begin, inputDim);
+        FloatType *curZ = z;
+        const FloatType *curX = x;
+        for (int m = 0; m < miniBatchSize; ++m) {
+            for (int i = 0; i < neuronCount; ++i) {
+                if (neuronIds[i] < dropoutCount) {
+                    if (i > begin) {
+                        multiplyMVTo(curZ + begin, weights + begin * inputDim, curX, i - begin, inputDim);
+                    }
+                    begin = i + 1;
                 }
-                begin = i + 1;
             }
+            if (begin + 1 < neuronCount) {
+                multiplyMVTo(curZ + begin, weights + begin * inputDim, curX, neuronCount - 1 - begin, inputDim);
+            }
+            curZ += neuronCount;
+            curX += inputDim;
         }
-        if (begin + 1 < neuronCount) {
-            multiplyMVTo(z + begin, weights + begin * inputDim, x, neuronCount - 1 - begin, inputDim);
-        }
-        for (int i = 0; i < neuronCount; ++i) {
-            a[i] = neuronIds[i] < dropoutCount ? 0 : activation(z[i]);
+
+        for (int i = 0; i < neuronCount * miniBatchSize; ++i) {
+            a[i] = neuronIds[i % neuronCount] < dropoutCount ? 0 : activation(z[i] += biases[i % neuronCount]);
         }
     }
 }
 
-void FullyConnLayer::computeOutputDelta(const double *y)
+void FullyConnLayer::computeOutputDelta(const FloatType *y)
 {
     if (activator == OUTPUT_ACTIVATOR) {
-        subMMTo(delta, a, y, neuronCount, 1);
+        subMMTo(delta, a, y, neuronCount * miniBatchSize, 1);
     }
 }
 
-void FullyConnLayer::computeBackPropDelta(double *backPropDelta)
+void FullyConnLayer::computeBackPropDelta(FloatType *backPropDelta)
 {
-    if (!transposedWeights) transposedWeights = new double[neuronCount * inputDim];
-    transposeMTo(transposedWeights, weights, neuronCount, inputDim);
-    multiplyMVTo(backPropDelta, transposedWeights, delta, inputDim, neuronCount);
+    FloatType *curBPD = backPropDelta;
+    const FloatType *curDelta = delta;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        multiplyTransposedMVTo(curBPD, weights, curDelta, neuronCount, inputDim);
+        curBPD += inputDim;
+        curDelta += neuronCount;
+    }
 }
 
 void FullyConnLayer::backPropagateDelta()
 {
     if (dropoutCount == 0) {
-        for (int i = 0; i < neuronCount; ++i) {
+        for (int i = 0; i < neuronCount * miniBatchSize; ++i) {
             delta[i] *= dActivation_dx(z[i]);
         }
     } else {
-        for (int i = 0; i < neuronCount; ++i) {
-            if (neuronIds[i] < dropoutCount) delta[i] = 0;
+        for (int i = 0; i < neuronCount * miniBatchSize; ++i) {
+            if (neuronIds[i % neuronCount] < dropoutCount) delta[i] = 0;
             else delta[i] *= dActivation_dx(z[i]);
         }
     }
 }
 
-void FullyConnLayer::clearGradient()
+void FullyConnLayer::computeGradient(const FloatType *prevActivation)
 {
-    memset(weightGradient, 0, neuronCount * inputDim * sizeof(double));
-    memset(biasGradient, 0, neuronCount * sizeof(double));
-}
-
-void FullyConnLayer::accumulateGradient(const double *prevActivation)
-{
-    addMMTo(biasGradient, biasGradient, delta, neuronCount, 1);
+    memset(weightGradient, 0, neuronCount * inputDim * sizeof(FloatType));
+    memset(biasGradient, 0, neuronCount * sizeof(FloatType));
+    const FloatType *curDelta = delta;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        addMMTo(biasGradient, biasGradient, curDelta, neuronCount, 1);
+        curDelta += neuronCount;
+    }
     for (int i = 0; i < neuronCount; ++i) {
-        if (delta[i] != 0) {
-            double *wi = weightGradient + i * inputDim;
-            for (int j = 0; j < inputDim; ++j) {
-                wi[j] += prevActivation[j] * delta[i];
+        biasGradient[i] /= miniBatchSize;
+    }
+
+    curDelta = delta;
+    const FloatType *curPA = prevActivation;
+    for (int m = 0; m < miniBatchSize; ++m) {
+        for (int i = 0; i < neuronCount; ++i) {
+            const FloatType di = curDelta[i];
+            if (di != 0) {
+                FloatType *wi = weightGradient + i * inputDim;
+                for (int j = 0; j < inputDim; ++j) {
+                    wi[j] += curPA[j] * di;
+                }
             }
         }
+        curDelta += neuronCount;
+        curPA += inputDim;
+    }
+    for (int i = 0; i < weightCount; ++i) {
+        weightGradient[i] /= miniBatchSize;
     }
 }
 
-void FullyConnLayer::updateParameters(size_t batchSize, size_t trainSetSize)
+void FullyConnLayer::updateParameters()
 {
-    double eta = -learningRate;
-    for (int i = 0; i < neuronCount; ++i) {
-        biases[i] += eta * biasGradient[i] / batchSize;
-    }
-    double ws = (1 + eta * regParam / trainSetSize);
-    for (int i = 0; i < neuronCount * inputDim; ++i) {
-        weights[i] = weights[i] * ws + eta * weightGradient[i] / batchSize;
-    }
+    optimizer->update(weights, weightGradient, biases, biasGradient);
 }
 
-const double * FullyConnLayer::getWeightedOutput()
+int FullyConnLayer::getWeightCount()
+{
+    return weightCount;
+}
+
+int FullyConnLayer::getBiasCount()
+{
+    return neuronCount;
+}
+
+const FloatType * FullyConnLayer::getWeightedOutput()
 {
     return z;
 }
 
-const double * FullyConnLayer::getActivationOutput()
+const FloatType * FullyConnLayer::getActivationOutput()
 {
     return a;
 }
 
-double* FullyConnLayer::getDelta()
+FloatType* FullyConnLayer::getDelta()
 {
     return delta;
 }
 
-void FullyConnLayer::setDropoutFraction(double dropoutFraction)
+void FullyConnLayer::setDropoutFraction(FloatType dropoutFraction)
 {
     /*输出层不能dropout*/
     dropoutCount = activator == OUTPUT_ACTIVATOR ? 0 : static_cast<int>(neuronCount * dropoutFraction);
@@ -188,7 +255,6 @@ FullyConnLayer::~FullyConnLayer()
 {
     delete[] biases;
     delete[] weights;
-    delete[] transposedWeights;
     delete[] weightGradient;
     delete[] biasGradient;
     delete[] z;

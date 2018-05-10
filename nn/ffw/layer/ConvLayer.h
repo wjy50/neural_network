@@ -14,10 +14,8 @@ namespace ffw
     {
     private:
         Activator activator;
-        double (*activation)(double);          /*激活函数*/
-        double (*dActivation_dx)(double);      /*激活函数导函数*/
-
-        double regParam;
+        FloatType (*activation)(FloatType);          /*激活函数*/
+        FloatType (*dActivation_dx)(FloatType);      /*激活函数导函数*/
 
         int inputWidth, inputHeight;
         int inputChannel;
@@ -33,16 +31,24 @@ namespace ffw
         int outputWidth, outputHeight;
         int outputSize;
 
-        double *kernels;
-        double *biases;
+        FloatType *kernels;
+        FloatType *biases;
 
-        double *weightGradient;
-        double *biasGradient;
+        FloatType *weightGradient;
+        FloatType *biasGradient;
 
-        double *z;
-        double *a;
+        FloatType *z;
+        FloatType *a;
 
-        double *delta;
+        FloatType *delta;
+
+        int right, bottom;
+
+        int weightCount;
+
+        int miniBatchSize;
+
+        void convolution(const FloatType *input, const FloatType *kernel, FloatType *out);
     public:
         /**
          * 构造卷积层
@@ -59,33 +65,28 @@ namespace ffw
          * @param activator 激活函数
          */
         ConvLayer(int inputWidth, int inputHeight, int inputChannel, int kernelWidth, int kernelHeight,
-                          int kernelCount, int xStride, int yStride, int xPadding, int yPadding, Activator activator);
+                  int kernelCount, int xStride, int yStride, int xPadding, int yPadding,
+                  Activator activator);
 
-        void initialize() override;
+        void initialize(int miniBatchSize) override;
 
-        /**
-         * 设置L2正规化参数
-         * @param regParam
-         */
-        void setRegParam(double regParam);
+        void feedForward(const FloatType *x) override;
 
-        void feedForward(const double *x) override;
+        void feedForwardForOptimization(const FloatType *x) override;
 
-        const double * getWeightedOutput() override;
+        const FloatType * getWeightedOutput() override;
 
-        const double * getActivationOutput() override;
+        const FloatType * getActivationOutput() override;
 
-        void computeOutputDelta(const double *y) override;
+        void computeOutputDelta(const FloatType *y) override;
 
-        void computeBackPropDelta(double *backPropDelta) override;
+        void computeBackPropDelta(FloatType *backPropDelta) override;
 
         void backPropagateDelta() override;
 
-        void clearGradient() override;
+        void computeGradient(const FloatType *prevActivation) override;
 
-        void accumulateGradient(const double *prevActivation) override;
-
-        void updateParameters(size_t batchSize, size_t trainSetSize) override;
+        void updateParameters() override;
 
         /**
          * 获取输出矩阵的宽度（列数）
@@ -105,7 +106,11 @@ namespace ffw
          */
         int getKernelCount();
 
-        double *getDelta() override;
+        FloatType *getDelta() override;
+
+        int getWeightCount() override;
+
+        int getBiasCount() override;
 
         ~ConvLayer();
     };

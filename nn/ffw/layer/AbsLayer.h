@@ -7,16 +7,17 @@
 
 #include <cstddef>
 #include "../../../math/Activator.h"
+#include "../optimizer/AbsOptimizer.h"
 
 namespace ffw
 {
-    static double (*ACTIVATION_FUNCTIONS[])(double) = {
+    static FloatType (*ACTIVATION_FUNCTIONS[])(FloatType) = {
             sigmoid,
             ReLU,
             lReLU
     };
 
-    static double (*D_ACTIVATION_FUNCTIONS[])(double) = {
+    static FloatType (*D_ACTIVATION_FUNCTIONS[])(FloatType) = {
             dSigmoid_dx,
             dReLU_dx,
             dLReLU_dx
@@ -33,9 +34,10 @@ namespace ffw
     class AbsLayer
     {
     protected:
-        double learningRate;
         int neuronCount;
         int inputDim;
+
+        AbsOptimizer *optimizer;
     public:
         AbsLayer(int neuronCount, int inputDim);
 
@@ -47,8 +49,9 @@ namespace ffw
 
         /**
          * 初始化神经网络（参数等）
+         * @param miniBatchSize 训练时mini batch的大小
          */
-        virtual void initialize() = 0;
+        virtual void initialize(int miniBatchSize) = 0;
 
         /**
          * 获取神经元个数
@@ -57,40 +60,46 @@ namespace ffw
         int getNeuronCount();
 
         /**
-         * 设置学习率
-         * @param learningRate 学习率
+         * 前馈计算输出，仅在测试或应用时使用，可减少一些不必要的运算
+         * @param x 单个的输入向量/矩阵
          */
-        void setLearningRate(double learningRate);
+        virtual void feedForward(const FloatType *x) = 0;
 
         /**
-         * 前馈计算输出
-         * @param x 输入向量/矩阵
+         * 前馈计算输出，仅在训练时使用
+         * @param x 包含miniBatchSize个输入向量/矩阵
          */
-        virtual void feedForward(const double *x) = 0;
+        virtual void feedForwardForOptimization(const FloatType *x) = 0;
+
+        /**
+         * 设置优化器（算法）
+         * @param optimizer
+         */
+        void setOptimizer(AbsOptimizer *optimizer);
 
         /**
          * 获取（上一次输入的）带权输出
          * @return 带权输出向量/矩阵
          */
-        virtual const double * getWeightedOutput() = 0;
+        virtual const FloatType * getWeightedOutput() = 0;
 
         /**
          * 获取（上一次输入的）激活输出
          * @return 激活输出向量/矩阵
          */
-        virtual const double * getActivationOutput() = 0;
+        virtual const FloatType * getActivationOutput() = 0;
 
         /**
          * （从上次输出）计算误差项，只能用于输出层
          * @param y 期望输出
          */
-        virtual void computeOutputDelta(const double *y) = 0;
+        virtual void computeOutputDelta(const FloatType *y) = 0;
 
         /**
          * 预处理反向传播中前一层需要用到的误差信息
          * @param backPropDelta 前一层误差项容器
          */
-        virtual void computeBackPropDelta(double *backPropDelta) = 0;
+        virtual void computeBackPropDelta(FloatType *backPropDelta) = 0;
 
         /**
          * 根据后一层提供的误差信息反向传播计算误差项
@@ -100,27 +109,31 @@ namespace ffw
         /**
          * 获取误差项
          */
-        virtual double *getDelta() = 0;
+        virtual FloatType *getDelta() = 0;
 
         /**
-         * 清空梯度信息
-         */
-        virtual void clearGradient() = 0;
-
-        /**
-         * 完成一次反向传播后累积梯度信息
-         * 以备一个batch或mini batch后更新参数
+         * 根据误差项计算梯度信息
          * @param prevActivation 前一层的激活输出
          */
-        virtual void accumulateGradient(const double *prevActivation) = 0;
+        virtual void computeGradient(const FloatType *prevActivation) = 0;
 
         /**
-         * 完成一个batch或mini batch后
-         * 根据已累积的梯度信息更新参数（权重和偏置）
-         * @param batchSize batch或mini batch大小
-         * @param trainSetSize 当前epoch的训练集大小
+         * 根据梯度信息更新参数（权重和偏置）
+         * @param batchSize （mini）batch大小
          */
-        virtual void updateParameters(size_t batchSize, size_t trainSetSize) = 0;
+        virtual void updateParameters() = 0;
+
+        /**
+         * 获取权重参数个数
+         * @return
+         */
+        virtual int getWeightCount() = 0;
+
+        /**
+         * 获取偏置参数个数
+         * @return
+         */
+        virtual int getBiasCount() = 0;
     };
 }
 
