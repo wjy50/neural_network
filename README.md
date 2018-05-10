@@ -1,3 +1,13 @@
 神经网络实现
 IDE : CLion 2018.1
-MNIST : http://yann.lecun.com/exdb/mnist/
+
+目前已实现：
+全连接神经网络
+卷积神经网络（卷积层、池化层）
+全连接层dropout（或许还不算严格实现，因为使用Adam或AdaMax或含L2正则化的SGD时被dropout的神经元参数仍会被修改）
+输入数据预处理（normalize）
+
+MNIST数据集的测试集准确率99%+
+CIFAR-10数据集的测试集准确率最高只达到过72%左右……（或许很大程度上是因为没有gpu加速模型规模做不大）
+
+尝试过使用OpenBLAS代替自己实现的矩阵运算，但效率反而比不上（开启O3级别优化后的）自己的实现，可能是编译OpenBLAS时没设置好……
