@@ -2,138 +2,178 @@
  * Created by wjy50 on 18-4-18.
  */
 
+#include <cstring>
+#include "../openblas/cblas.h"
 #include "Matrix.h"
 
-double *multiplyMM(const double *lhs, const double *rhs, int x, int y, int z)
+FloatType *multiplyMM(const FloatType *lhs, const FloatType *rhs, int x, int y, int z)
 {
-    auto *r = new double[x*z];
+    auto *r = new FloatType[x * z];
     multiplyMMTo(r, lhs, rhs, x, y, z);
     return r;
 }
 
-void multiplyMMTo(double *r, const double *lhs, const double *rhs, int x, int y, int z)
+void multiplyMMTo(FloatType *r, const FloatType *lhs, const FloatType *rhs, int x, int y, int z)
 {
-    for (int i = 0; i < x * z; ++i) {
-        r[i] = 0;
-    }
+    memset(r, 0, x * z * sizeof(FloatType));
     for (int i = 0; i < x; ++i) {
+        int r1 = i * z;
         for (int j = 0; j < y; ++j) {
-            if (lhs[i*y+j] != 0) for (int k = 0; k < z; ++k) {
-                    r[i*z+k] += lhs[i*y+j] * rhs[j*z+k];
+            FloatType li = lhs[i*y+j];
+            if (li != 0) {
+                int r2 = j * z;
+                for (int k = 0; k < z; ++k) {
+                    r[r1+k] += li * rhs[r2+k];
+                }
             }
         }
     }
 }
 
-double *addMM(const double *m1, const double *m2, int x, int y)
+FloatType *addMM(const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    auto *r = new double[x*y];
+    auto *r = new FloatType[x * y];
     addMMTo(r, m1, m2, x, y);
     return r;
 }
 
-void addMMTo(double *r, const double *m1, const double *m2, int x, int y)
+void addMMTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) r[i] = m1[i] + m2[i];
+    int l = x * y;
+    for (int i = 0; i < l; ++i) r[i] = m1[i] + m2[i];
 }
 
-double *subMM(const double *m1, const double *m2, int x, int y)
+FloatType *subMM(const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    auto *r = new double[x*y];
+    auto *r = new FloatType[x * y];
     subMMTo(r, m1, m2, x, y);
     return r;
 }
 
-void subMMTo(double *r, const double *m1, const double *m2, int x, int y)
+void subMMTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) r[i] = m1[i] - m2[i];
+    int l = x * y;
+    for (int i = 0; i < l; ++i) r[i] = m1[i] - m2[i];
 }
 
-double *multiplyMV(const double *m, const double *v, int x, int y)
+FloatType *multiplyMV(const FloatType *m, const FloatType *v, int x, int y)
 {
-    auto *r = new double[x];
+    auto *r = new FloatType[x];
     multiplyMVTo(r, m, v, x, y);
     return r;
 }
 
-void multiplyMVTo(double *r, const double *m, const double *v, int x, int y)
+FloatType *multiplyNM(FloatType n, const FloatType *m, int x, int y)
 {
-    for (int i = 0; i < x; ++i) {
-        r[i] = 0;
-        for (int j = 0; j < y; ++j) {
-            r[i] += m[i*y+j]*v[j];
-        }
-    }
-}
-
-double *multiplyNM(double n, const double *m, int x, int y)
-{
-    auto *r = new double[x*y];
+    auto *r = new FloatType[x * y];
     multiplyNMTo(r, n, m, x, y);
     return r;
 }
 
-void multiplyNMTo(double *r, double n, const double *m, int x, int y)
+void multiplyNMTo(FloatType *r, FloatType n, const FloatType *m, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) {
+    int l = x * y;
+    for (int i = 0; i < l; ++i) {
         r[i] = m[i] * n;
     }
 }
 
-double *addNM(double n, const double *m, int x, int y)
+FloatType *addNM(FloatType n, const FloatType *m, int x, int y)
 {
-    auto *r = new double[x*y];
+    auto *r = new FloatType[x * y];
     addNMTo(r, n, m, x, y);
     return r;
 }
 
-void addNMTo(double *r, double n, const double *m, int x, int y)
+void addNMTo(FloatType *r, FloatType n, const FloatType *m, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) {
+    int l = x * y;
+    for (int i = 0; i < l; ++i) {
         r[i] = m[i] + n;
     }
 }
 
-void mMultiplyN(double n, double *m, int x, int y)
+void mMultiplyN(FloatType n, FloatType *m, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) {
+    int l = x * y;
+    for (int i = 0; i < l; ++i) {
         m[i] *= n;
     }
 }
 
-void mAddN(double n, double *m, int x, int y)
+void mAddN(FloatType n, FloatType *m, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) {
+    int l = x * y;
+    for (int i = 0; i < l; ++i) {
         m[i] += n;
     }
 }
 
-double *multiplyMMElem(const double *m1, const double *m2, int x, int y)
+FloatType *multiplyMMElem(const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    auto *r = new double[x*y];
+    auto *r = new FloatType[x * y];
     multiplyMMElemTo(r, m1, m2, x, y);
     return r;
 }
 
-void multiplyMMElemTo(double *r, const double *m1, const double *m2, int x, int y)
+void multiplyMMElemTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y)
 {
-    for (int i = 0; i < x * y; ++i) {
+    int l = x * y;
+    for (int i = 0; i < l; ++i) {
         r[i] = m1[i] * m2[i];
     }
 }
 
-double *transposeM(const double *m, int x, int y)
+FloatType *transposeM(const FloatType *m, int x, int y)
 {
-    auto *r = new double[y*x];
+    auto *r = new FloatType[y * x];
     transposeMTo(r, m, x, y);
     return r;
 }
 
-void transposeMTo(double *r, const double *m, int x, int y)
+void transposeMTo(FloatType *r, const FloatType *m, int x, int y)
 {
     for (int i = 0; i < x; ++i) {
+        int mOffset = i * y;
         for (int j = 0; j < y; ++j) {
-            r[j*x+i] = m[i*y+j];
+            r[j*x+i] = m[mOffset + j];
         }
     }
 }
+
+FloatType *multiplyTransposedMV(const FloatType *m, const FloatType *v, int x, int y)
+{
+    auto *r = new FloatType[y];
+    multiplyTransposedMVTo(r, m, v, x, y);
+    return r;
+}
+
+void multiplyTransposedMVTo(FloatType *r, const FloatType *m, const FloatType *v, int x, int y)
+{
+    memset(r, 0, y * sizeof(FloatType));
+    for (int i = 0; i < x; ++i) {
+        FloatType vi = v[i];
+        if (vi != 0) {
+            const FloatType *mi = m + i * y;
+            for (int j = 0; j < y; ++j) {
+                r[j] += mi[j] * vi;
+            }
+        }
+    }
+}
+
+#if !USE_CBLAS
+
+void multiplyMVTo(FloatType *r, const FloatType *m, const FloatType *v, int x, int y)
+{
+    for (int i = 0; i < x; ++i) {
+        FloatType res = 0;
+        const FloatType *mi = m + i * y;
+        for (int j = 0; j < y; ++j) {
+            res += mi[j] * v[j];
+        }
+        r[i] = res;
+    }
+}
+
+#endif

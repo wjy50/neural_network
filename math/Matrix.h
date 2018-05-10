@@ -5,6 +5,8 @@
 #ifndef NEURAL_NETWORK_MATRIX_H
 #define NEURAL_NETWORK_MATRIX_H
 
+#include "mtype.h"
+
 #ifdef MATRIX_CLASS
 
 #include <cstring>
@@ -175,7 +177,7 @@ extern "C"
  * @param z 右边矩阵列数
  * @return 结果
  */
-double *multiplyMM(const double *lhs, const double *rhs, int x, int y, int z);
+FloatType *multiplyMM(const FloatType *lhs, const FloatType *rhs, int x, int y, int z);
 
 /**
  * 矩阵乘法，结果放在给定数组内
@@ -186,7 +188,7 @@ double *multiplyMM(const double *lhs, const double *rhs, int x, int y, int z);
  * @param y 左边矩阵列数，也是右边矩阵行数
  * @param z 右边矩阵列数
  */
-void multiplyMMTo(double *r, const double *lhs, const double *rhs, int x, int y, int z);
+void multiplyMMTo(FloatType *r, const FloatType *lhs, const FloatType *rhs, int x, int y, int z);
 
 /**
  * 矩阵同位元素相加，用新的数组存放结果
@@ -196,7 +198,7 @@ void multiplyMMTo(double *r, const double *lhs, const double *rhs, int x, int y,
  * @param y 列数
  * @return 结果
  */
-double *addMM(const double *m1, const double *m2, int x, int y);
+FloatType *addMM(const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 矩阵同位元素相加，结果放在给定数组内
@@ -206,7 +208,7 @@ double *addMM(const double *m1, const double *m2, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void addMMTo(double *r, const double *m1, const double *m2, int x, int y);
+void addMMTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 矩阵同位元素相减，用新的数组存放结果
@@ -216,7 +218,7 @@ void addMMTo(double *r, const double *m1, const double *m2, int x, int y);
  * @param y 列数
  * @return 结果
  */
-double *subMM(const double *m1, const double *m2, int x, int y);
+FloatType *subMM(const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 矩阵同位元素相减，结果放在给定数组内
@@ -226,7 +228,7 @@ double *subMM(const double *m1, const double *m2, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void subMMTo(double *r, const double *m1, const double *m2, int x, int y);
+void subMMTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 矩阵乘向量，用新的数组存放结果
@@ -236,17 +238,7 @@ void subMMTo(double *r, const double *m1, const double *m2, int x, int y);
  * @param y 矩阵列数，也是向量v维数
  * @return 结果向量
  */
-double *multiplyMV(const double *m, const double *v, int x, int y);
-
-/**
- * 矩阵乘向量，结果放在给定数组内
- * @param r 结果容器
- * @param m 矩阵
- * @param v 向量
- * @param x 矩阵行数
- * @param y 矩阵列数，也是向量v维数
- */
-void multiplyMVTo(double *r, const double *m, const double *v, int x, int y);
+FloatType *multiplyMV(const FloatType *m, const FloatType *v, int x, int y);
 
 /**
  * 矩阵数乘，用新的数组存放结果
@@ -256,7 +248,7 @@ void multiplyMVTo(double *r, const double *m, const double *v, int x, int y);
  * @param y 列数
  * @return 结果
  */
-double *multiplyNM(double n, const double *m, int x, int y);
+FloatType *multiplyNM(FloatType n, const FloatType *m, int x, int y);
 
 /**
  * 矩阵数乘，结果放在给定数组内
@@ -266,7 +258,7 @@ double *multiplyNM(double n, const double *m, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void multiplyNMTo(double *r, double n, const double *m, int x, int y);
+void multiplyNMTo(FloatType *r, FloatType n, const FloatType *m, int x, int y);
 
 /**
  * 矩阵按元素加数，用新的数组存放结果
@@ -276,7 +268,7 @@ void multiplyNMTo(double *r, double n, const double *m, int x, int y);
  * @param y 列数
  * @return
  */
-double *addNM(double n, const double *m, int x, int y);
+FloatType *addNM(FloatType n, const FloatType *m, int x, int y);
 
 /**
  * 矩阵按元素加数，结果放在给定数组内
@@ -286,7 +278,7 @@ double *addNM(double n, const double *m, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void addNMTo(double *r, double n, const double *m, int x, int y);
+void addNMTo(FloatType *r, FloatType n, const FloatType *m, int x, int y);
 
 /**
  * 矩阵数乘，结果就在m中
@@ -295,7 +287,7 @@ void addNMTo(double *r, double n, const double *m, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void mMultiplyN(double n, double *m, int x, int y);
+void mMultiplyN(FloatType n, FloatType *m, int x, int y);
 
 /**
  * 矩阵按元素加数，结果就在m中
@@ -304,7 +296,7 @@ void mMultiplyN(double n, double *m, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void mAddN(double n, double *m, int x, int y);
+void mAddN(FloatType n, FloatType *m, int x, int y);
 
 /**
  * 矩阵同位元素相乘，用新的数组存放结果
@@ -314,7 +306,7 @@ void mAddN(double n, double *m, int x, int y);
  * @param y 列数
  * @return 结果
  */
-double *multiplyMMElem(const double *m1, const double *m2, int x, int y);
+FloatType *multiplyMMElem(const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 矩阵同位元素相乘，结果放在给定数组内
@@ -324,7 +316,7 @@ double *multiplyMMElem(const double *m1, const double *m2, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void multiplyMMElemTo(double *r, const double *m1, const double *m2, int x, int y);
+void multiplyMMElemTo(FloatType *r, const FloatType *m1, const FloatType *m2, int x, int y);
 
 /**
  * 转置矩阵，用新的数组存放结果
@@ -333,7 +325,7 @@ void multiplyMMElemTo(double *r, const double *m1, const double *m2, int x, int 
  * @param y 列数
  * @return 结果
  */
-double *transposeM(const double *m, int x, int y);
+FloatType *transposeM(const FloatType *m, int x, int y);
 
 /**
  * 转置矩阵，结果放在给定数组内
@@ -342,7 +334,53 @@ double *transposeM(const double *m, int x, int y);
  * @param x 行数
  * @param y 列数
  */
-void transposeMTo(double *r, const double *m, int x, int y);
+void transposeMTo(FloatType *r, const FloatType *m, int x, int y);
+
+/**
+ * 转置矩阵与向量相乘，即T(M) * V，T(M)为矩阵M转置
+ * 直接计算免去转置的时间和空间开销
+ * @param m 矩阵
+ * @param v 向量
+ * @param x 矩阵行数，因为是转置后相乘，也是向量维数
+ * @param y 矩阵列数
+ * @return 结果
+ */
+FloatType *multiplyTransposedMV(const FloatType *m, const FloatType *v, int x, int y);
+
+/**
+ * 转置矩阵与向量相乘，即T(M) * V，T(M)为矩阵M转置
+ * 直接计算免去转置的时间和空间开销
+ * 结果保存在指定数组
+ * @param r 结果容器
+ * @param m 矩阵
+ * @param v 向量
+ * @param x 矩阵行数，因为是转置后相乘，也是向量维数
+ * @param y 矩阵列数
+ */
+void multiplyTransposedMVTo(FloatType *r, const FloatType *m, const FloatType *v, int x, int y);
+
+#define USE_CBLAS 0
+
+#if USE_CBLAS
+
+#include "../openblas/cblas.h"
+
+//#define multiplyTransposedMVTo(r, m, v, x, y) M_CBLAS_GEMV(CblasRowMajor, CblasTrans, (x), (y), 1, m, (y), (v), 1, 0, (r), 1)
+#define multiplyMVTo(r, m, v, x, y) M_CBLAS_GEMV(CblasRowMajor, CblasNoTrans, (x), (y), 1, m, (y), (v), 1, 0, (r), 1)
+
+#else
+
+/**
+ * 矩阵乘向量，结果放在给定数组内
+ * @param r 结果容器
+ * @param m 矩阵
+ * @param v 向量
+ * @param x 矩阵行数
+ * @param y 矩阵列数，也是向量v维数
+ */
+void multiplyMVTo(FloatType *r, const FloatType *m, const FloatType *v, int x, int y);
+
+#endif
 
 #ifdef __cplusplus
 };

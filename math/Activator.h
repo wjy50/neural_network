@@ -5,29 +5,31 @@
 #ifndef NEURAL_NETWORK_ACTIVATOR_H
 #define NEURAL_NETWORK_ACTIVATOR_H
 
+#include "mtype.h"
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-double sigmoid(double x);
+FloatType sigmoid(FloatType x);
 
-double dSigmoid_dx(double x);
+FloatType dSigmoid_dx(FloatType x);
 
-double ReLU(double x);
+FloatType ReLU(FloatType x);
 
-double dReLU_dx(double x);
+FloatType dReLU_dx(FloatType x);
 
-double lReLU(double x);
+FloatType lReLU(FloatType x);
 
-double dLReLU_dx(double x);
+FloatType dLReLU_dx(FloatType x);
 
 /**
  * SoftMax激活函数，用于输出层
  * @param x 输出层的带权输出向量
  * @param n 维数
  */
-void softMax(double *x, int n);
+void softMax(FloatType *x, int n);
 
 /**
  * softMax激活函数，用于输出层，
@@ -35,7 +37,7 @@ void softMax(double *x, int n);
  * @param x 待激活向量
  * @param n 向量维数
  */
-void softMaxInto(double *r, double *x, int n);
+void softMaxInto(FloatType *r, FloatType *x, int n);
 
 #ifdef __cplusplus
 };
