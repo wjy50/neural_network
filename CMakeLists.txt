@@ -3,81 +3,57 @@ project(neural_network)
 
 set(CMAKE_CXX_STANDARD 11)
 
-ADD_DEFINITIONS(-O3)
+include_directories(/usr/local/cuda/include)
 
-add_library(
-        openblas
+link_directories(/usr/local/cuda/lib64)
 
-        SHARED
-
-        IMPORTED
-)
-
-set_target_properties(
-        openblas
-
-        PROPERTIES
-
-        IMPORTED_LOCATION
-
-        ${CMAKE_SOURCE_DIR}/libopenblas.so
-)
-
-add_library(
-        openblas_haswell
-
-        SHARED
-
-        IMPORTED
-)
-
-set_target_properties(
-        openblas_haswell
-
-        PROPERTIES
-
-        IMPORTED_LOCATION
-
-        ${CMAKE_SOURCE_DIR}/libopenblas_haswellp-r0.2.20.so
-)
+ADD_DEFINITIONS(-O2)
 
 add_executable(
         neural_network
+
         main.cpp
-        math/Matrix.h
-        math/Activator.h
-        math/Matrix.cpp
-        mnist/mnist.h
-        mnist/mnist.cpp
-        math/permutation.h
-        math/Activator.cpp
-        utils/UniquePointerExt.h
-        nn/ffw/FeedForwardNN.h
-        nn/ffw/FeedForwardNN.cpp
-        nn/ffw/layer/AbsLayer.cpp
-        nn/ffw/layer/AbsLayer.h
-        nn/ffw/layer/FullyConnLayer.cpp
-        nn/ffw/layer/FullyConnLayer.h
-        nn/ffw/layer/ConvLayer.cpp
-        nn/ffw/layer/ConvLayer.h
-        nn/ffw/layer/PoolingLayer.cpp
-        nn/ffw/layer/PoolingLayer.h
-        nn/ffw/layer/BatchNormLayer.cpp
-        nn/ffw/layer/BatchNormLayer.h
-        data/DataSet.h cifar/cifar.h
-        cifar/cifar.cpp
-        data/DataSet.cpp
-        math/mtype.h
-        nn/ffw/optimizer/AbsOptimizer.cpp
-        nn/ffw/optimizer/AbsOptimizer.h
-        nn/ffw/optimizer/SimpleSGDOptimizer.cpp
-        nn/ffw/optimizer/SimpleSGDOptimizer.h
-        nn/ffw/optimizer/AdamOptimizer.cpp
-        nn/ffw/optimizer/AdamOptimizer.h
-        nn/ffw/optimizer/AdaMaxOptimizer.cpp
-        nn/ffw/optimizer/AdaMaxOptimizer.h
-        openblas/cblas.h
-        openblas/f77blas.h
+        v3/nn/layer/base/LayerBase.cpp
+        v3/nn/layer/base/LayerBase.h
+        v3/nn/optimizer/base/OptimizerBase.cpp
+        v3/nn/optimizer/base/OptimizerBase.h
+        v3/nn/layer/LinearLayer.cpp
+        v3/nn/layer/LinearLayer.h
+        v3/nn/layer/ConvLayer.cpp
+        v3/nn/layer/ConvLayer.h
+        v3/nn/layer/MaxPoolingLayer.cpp
+        v3/nn/layer/MaxPoolingLayer.h
+        v3/nn/layer/MeanPoolingLayer.cpp
+        v3/nn/layer/MeanPoolingLayer.h
+        v3/nn/layer/activation/SigmoidOutputLayer.cpp
+        v3/nn/layer/activation/SigmoidOutputLayer.h
+        v3/nn/layer/activation/ReLULayer.cpp
+        v3/nn/layer/activation/ReLULayer.h
+        v3/nn/layer/activation/LReLULayer.cpp
+        v3/nn/layer/activation/LReLULayer.h
+        v3/nn/layer/activation/SoftMaxOutputLayer.cpp
+        v3/nn/layer/activation/SoftMaxOutputLayer.h
+        v3/nn/optimizer/SGDOptimizer.cpp
+        v3/nn/optimizer/SGDOptimizer.h
+        v3/nn/optimizer/AdamOptimizer.cpp
+        v3/nn/optimizer/AdamOptimizer.h
+        v3/nn/optimizer/AdaMaxOptimizer.cpp
+        v3/nn/optimizer/AdaMaxOptimizer.h
+        v3/nn/NeuralNetwork.cpp
+        v3/nn/NeuralNetwork.h
+        v3/interface/interface.cpp
+        v3/interface/interface.h
+        v3/def/type.h
+        v3/def/CUDAEnvironment.h
+        v3/data/base/DataSetBase.cpp
+        v3/data/base/DataSetBase.h
+        v3/data/mnist/MNISTDataSet.cpp
+        v3/data/mnist/MNISTDataSet.h
+        v3/data/cifar10/CIFAR10DataSet.cpp
+        v3/data/cifar10/CIFAR10DataSet.h
+        v3/interface/interface.cu
+        v3/utils/UniquePointerExt.h
+        v3/utils/permutation.h
 )
 
-target_link_libraries(neural_network openblas openblas_haswell)
+target_link_libraries(neural_network cudart cublas)
