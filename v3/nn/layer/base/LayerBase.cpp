@@ -46,7 +46,7 @@ void LayerBase::updateParameters()
 void LayerBase::initialize(int maxMiniBatchSize)
 {
     this->miniBatchSize = maxMiniBatchSize;
-    allocOutput();
+    if (needIndependentOutput()) allocOutput();
     onInitialized();
 }
 
@@ -71,6 +71,11 @@ void LayerBase::allocOutput()
 void LayerBase::setDeltaOutput(FloatType *deltaOutput)
 {
     this->deltaOutput = deltaOutput;
+}
+
+bool LayerBase::needIndependentOutput()
+{
+    return true;
 }
 
 LayerBase::~LayerBase()

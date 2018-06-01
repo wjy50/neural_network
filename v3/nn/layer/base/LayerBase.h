@@ -33,6 +33,8 @@ protected:
     virtual void computeGradients() = 0;
 
     virtual void onInitialized();
+
+    virtual bool needIndependentOutput();
 public:
     LayerBase(int inputDim, int outputDim);
 
