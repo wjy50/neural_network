@@ -51,7 +51,7 @@ void LinearLayer::computeGradients()
 {
     multiplyTmMTo(weightGradients, delta, in, miniBatchSize, outputDim, inputDim);
     multiplyNVTo(weightGradients, static_cast<FloatType>(1) / miniBatchSize, weightGradients, inputDim * outputDim);
-    averageVTo(biasGradients, delta, outputDim, miniBatchSize);
+    if (biases) averageVTo(biasGradients, delta, outputDim, miniBatchSize);
 }
 
 void LinearLayer::onInitialized()

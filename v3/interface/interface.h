@@ -165,4 +165,12 @@ void initLinearWeights(FloatType *w, int outputDim, int inputDim);
 
 void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int batchSize);
 
+void bnXSubAvg(FloatType *r, const FloatType *x, const FloatType *avg, int dim, int batchSize);
+
+void bnVar(FloatType *var, const FloatType *xSubAvg, int dim, int batchSize);
+
+void batchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, const FloatType *var, int dim, int batchSize);
+
+void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *params, int size);
+
 #endif //NEURAL_NETWORK_INTERFACE_H

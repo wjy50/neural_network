@@ -512,19 +512,21 @@ void convGradients(FloatType *kernel, int kernelWidth, int kernelHeight,
     for (int i = 0; i < weightCount; ++i) {
         kernel[i] /= batchSize;
     }
-    memset(biases, 0, kernelCount * sizeof(FloatType));
-    const FloatType *curDelta = delta;
-    for (int m = 0; m < batchSize; ++m) {
-        for (int i = 0; i < kernelCount; ++i, curDelta += outputSize) {
-            FloatType sum = 0;
-            for (int j = 0; j < outputSize; ++j) {
-                sum += curDelta[j];
+    if (biases) {
+        memset(biases, 0, kernelCount * sizeof(FloatType));
+        const FloatType *curDelta = delta;
+        for (int m = 0; m < batchSize; ++m) {
+            for (int i = 0; i < kernelCount; ++i, curDelta += outputSize) {
+                FloatType sum = 0;
+                for (int j = 0; j < outputSize; ++j) {
+                    sum += curDelta[j];
+                }
+                biases[i] += sum;
             }
-            biases[i] += sum;
         }
-    }
-    for (int i = 0; i < kernelCount; ++i) {
-        biases[i] /= batchSize;
+        for (int i = 0; i < kernelCount; ++i) {
+            biases[i] /= batchSize;
+        }
     }
 }
 
@@ -623,6 +625,49 @@ void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int 
         for (int j = 0; j < dim; ++j) {
             if (ids[j] < dropoutCount) cv[j] = 0;
         }
+    }
+}
+
+void bnXSubAvg(FloatType *r, const FloatType *x, const FloatType *avg, int dim, int batchSize)
+{
+    for (int i = 0; i < batchSize; ++i) {
+        FloatType *cr = r + i * dim;
+        const FloatType *cx = x + i * dim;
+        for (int j = 0; j < dim; ++j) {
+            cr[j] = cx[j] - avg[j];
+        }
+    }
+}
+
+void bnVar(FloatType *var, const FloatType *xSubAvg, int dim, int batchSize)
+{
+    memset(var, 0, dim * sizeof(FloatType));
+    for (int i = 0; i < batchSize; ++i) {
+        const FloatType *curXSubAvg = xSubAvg + i * dim;
+        for (int j = 0; j < dim; ++j) {
+            var[j] += curXSubAvg[j] * curXSubAvg[j];
+        }
+    }
+    for (int i = 0; i < dim; ++i) {
+        var[i] = std::sqrt(var[i] / batchSize + 1e-6f);
+    }
+}
+
+void batchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, const FloatType *var, int dim, int batchSize)
+{
+    for (int i = 0; i < batchSize; ++i) {
+        FloatType *curOut = out + i * dim;
+        const FloatType *cx = x + i * dim;
+        for (int j = 0; j < dim; ++j) {
+            curOut[j] = (cx[j] - avg[j]) / var[j];
+        }
+    }
+}
+
+void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *params, int size)
+{
+    for (int i = 0; i < size; ++i) {
+        out[i] = params[0] * normOut[i] + params[1];
     }
 }
 
