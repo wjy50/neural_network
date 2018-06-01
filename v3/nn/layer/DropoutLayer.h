@@ -8,7 +8,7 @@
 #define NEURAL_NETWORK_DROPOUTLAYER_H
 
 
-#include "../base/LayerBase.h"
+#include "base/LayerBase.h"
 
 class DropoutLayer : public LayerBase
 {

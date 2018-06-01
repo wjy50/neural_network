@@ -14,7 +14,7 @@
 #include "v3/data/mnist/MNISTDataSet.h"
 #include "v3/interface/interface.h"
 #include "v3/nn/optimizer/AdamOptimizer.h"
-#include "v3/nn/layer/activation/DropoutLayer.h"
+#include "v3/nn/layer/DropoutLayer.h"
 #include "v3/data/cifar10/CIFAR10DataSet.h"
 
 using namespace std;

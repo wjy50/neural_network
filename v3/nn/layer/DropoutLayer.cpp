@@ -3,8 +3,8 @@
  */
 
 #include "DropoutLayer.h"
-#include "../../../utils/permutation.h"
-#include "../../../interface/interface.h"
+#include "../../utils/permutation.h"
+#include "../../interface/interface.h"
 
 DropoutLayer::DropoutLayer(int dim) : LayerBase(dim, dim)
 {
