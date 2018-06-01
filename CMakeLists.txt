@@ -54,6 +54,8 @@ add_executable(
         v3/interface/interface.cu
         v3/utils/UniquePointerExt.h
         v3/utils/permutation.h
+        v3/nn/layer/activation/DropoutLayer.cpp
+        v3/nn/layer/activation/DropoutLayer.h
 )
 
 target_link_libraries(neural_network cudart cublas)
