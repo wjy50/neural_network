@@ -22,7 +22,7 @@ const FloatType *SigmoidOutputLayer::feedForwardForOptimization(const FloatType 
 
 void SigmoidOutputLayer::backPropagate(const FloatType *y)
 {
-    subtractMM(deltaOutput, output, y, outputDim * miniBatchSize);
+    subtractVTo(deltaOutput, output, y, outputDim * miniBatchSize);
 }
 
 FloatType* SigmoidOutputLayer::getDelta()

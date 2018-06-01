@@ -22,7 +22,7 @@ const FloatType *SoftMaxOutputLayer::feedForwardForOptimization(const FloatType 
 
 void SoftMaxOutputLayer::backPropagate(const FloatType *y)
 {
-    subtractMM(deltaOutput, output, y, outputDim * miniBatchSize);
+    subtractVTo(deltaOutput, output, y, outputDim * miniBatchSize);
 }
 
 FloatType* SoftMaxOutputLayer::getDelta()
