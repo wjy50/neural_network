@@ -56,6 +56,6 @@ add_executable(
         v3/utils/permutation.h
         v3/nn/layer/DropoutLayer.cpp
         v3/nn/layer/DropoutLayer.h
-)
+        v3/nn/layer/BatchNormLayer.cpp v3/nn/layer/BatchNormLayer.h)
 
 target_link_libraries(neural_network cudart cublas)

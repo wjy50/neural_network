@@ -16,6 +16,7 @@
 #include "v3/nn/optimizer/AdamOptimizer.h"
 #include "v3/nn/layer/DropoutLayer.h"
 #include "v3/data/cifar10/CIFAR10DataSet.h"
+#include "v3/nn/layer/BatchNormLayer.h"
 
 using namespace std;
 
@@ -34,8 +35,11 @@ void newNNMNIST()
 
     NeuralNetwork nn;
 
-    ConvLayer convLayer(28, 28, 1, 5, 5, 6, 1, 1, 0, 0);
+    ConvLayer convLayer(28, 28, 1, 5, 5, 6, 1, 1, 2, 2, true);
     nn.addLayer(&convLayer);
+
+    BatchNormLayer batchNormLayer(convLayer.getOutputDim());
+    nn.addLayer(&batchNormLayer);
 
     LReLULayer lReLULayer(convLayer.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer);
@@ -45,6 +49,9 @@ void newNNMNIST()
 
     ConvLayer convLayer1(poolingLayer.getOutputWidth(), poolingLayer.getOutputHeight(), poolingLayer.getChannelCount(), 3, 3, 16, 1, 1, 0, 0);
     nn.addLayer(&convLayer1);
+
+    BatchNormLayer batchNormLayer1(convLayer1.getOutputDim());
+    nn.addLayer(&batchNormLayer1);
 
     LReLULayer lReLULayer1(convLayer1.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer1);
@@ -68,7 +75,7 @@ void newNNMNIST()
     SoftMaxOutputLayer output(layer1.getOutputDim());
     nn.addLayer(&output);
 
-    nn.buildUpNetwork(20);
+    nn.buildUpNetwork(10);
 
     AdamOptimizer optimizer1;
     convLayer.setOptimizer(&optimizer1);
@@ -78,6 +85,10 @@ void newNNMNIST()
     layer.setOptimizer(&optimizer3);
     AdamOptimizer optimizer4;
     layer1.setOptimizer(&optimizer4);
+    AdamOptimizer optimizer5;
+    batchNormLayer.setOptimizer(&optimizer5);
+    AdamOptimizer optimizer6;
+    batchNormLayer1.setOptimizer(&optimizer6);
 
     MNISTDataSet trainSet("/home/wjy50/mnist/train-images.idx3-ubyte", "/home/wjy50/mnist/train-labels.idx1-ubyte");
     MNISTDataSet testSet("/home/wjy50/mnist/t10k-images.idx3-ubyte", "/home/wjy50/mnist/t10k-labels.idx1-ubyte");
@@ -258,9 +269,9 @@ int main()
     initializeCUDA();
 #endif
 
-    newNNCIFAR10();
+    newNNMNIST();
 
-    FloatType v[] = {
+    /*FloatType v[] = {
             1, 2, 3, 0,
             2, 3, 1, 4,
             3, 1, 2, 2,
@@ -279,7 +290,7 @@ int main()
     printM(v, 4, 4);
     convGradients(k, 2, 2, k + 4, 1, r, 3, 3, v, 4, 4, 1, 1, 1, 0, 0, 1);
     printM(k, 2, 2);
-    printM(k + 4, 1, 1);
+    printM(k + 4, 1, 1);*/
 
 #if ENABLE_CUDA
     destroyCUDA();
