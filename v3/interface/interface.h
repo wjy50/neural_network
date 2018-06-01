@@ -70,7 +70,7 @@ void reLU_bp(FloatType *out, const FloatType *x, const FloatType *delta, int len
 
 void sigmoidOutput(FloatType *out, const FloatType *in, int len);
 
-void subtractMM(FloatType *r, const FloatType *a, const FloatType *b, int len);
+void subtractVTo(FloatType *r, const FloatType *a, const FloatType *b, int len);
 
 void softMaxOutput(FloatType *out, const FloatType *in, int len, int count);
 
@@ -162,5 +162,7 @@ void convLayerBias(FloatType *m, int r, int c, int channel, const FloatType *bia
 void initConvKernel(FloatType *k, int size, int inputDim);
 
 void initLinearWeights(FloatType *w, int outputDim, int inputDim);
+
+void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int batchSize);
 
 #endif //NEURAL_NETWORK_INTERFACE_H

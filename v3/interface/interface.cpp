@@ -52,7 +52,7 @@ void sigmoidOutput(FloatType *out, const FloatType *in, int len)
     }
 }
 
-void subtractMM(FloatType *r, const FloatType *a, const FloatType *b, int len)
+void subtractVTo(FloatType *r, const FloatType *a, const FloatType *b, int len)
 {
     for (int i = 0; i < len; ++i) {
         r[i] = a[i] - b[i];
@@ -382,10 +382,9 @@ void doConv(const FloatType *in, int inputWidth, int inputHeight,
             FloatType *outputRow = out + oy * outputWidth;
             int ox = 0;
             for (int inputX = -yPadding; inputX <= right; inputX += xStride, ++ox) {
-                int kerX = std::max(-inputX, 0);
                 int xLim = kernelWidth - std::max(0, inputX + kernelWidth - inputWidth);
                 FloatType sum = 0;
-                for (; kerX < xLim; ++kerX) {
+                for (int kerX = std::max(-inputX, 0); kerX < xLim; ++kerX) {
                     sum += kerRow[kerX] * inputRow[inputX + kerX];
                 }
                 outputRow[ox] += sum;
@@ -444,10 +443,9 @@ void doConvBP(const FloatType *in, int inputWidth,
             const FloatType *inputRow = in + iy * inputWidth;
             int ix = 0;
             for (int outputX = -yPadding; outputX <= right; outputX += xStride, ++ix) {
-                int kerX = std::max(-outputX, 0);
                 int xLim = kernelWidth - std::max(0, outputX + kernelWidth - outputWidth);
                 FloatType d = inputRow[ix];
-                for (; kerX < xLim; ++kerX) {
+                for (int kerX = std::max(-outputX, 0); kerX < xLim; ++kerX) {
                     outputRow[outputX + kerX] += d * kerRow[kerX];
                 }
             }
@@ -614,6 +612,16 @@ void getCIFAR10Batch(FloatType *data, FloatType *labels,
         for (int i = 0; i < count; ++i) {
             int index = indices[i];
             labels[10 * i + buffer[index * 3073]] = 1;
+        }
+    }
+}
+
+void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int batchSize)
+{
+    for (int i = 0; i < batchSize; ++i) {
+        FloatType *cv = v + i * dim;
+        for (int j = 0; j < dim; ++j) {
+            if (ids[j] < dropoutCount) cv[j] = 0;
         }
     }
 }
