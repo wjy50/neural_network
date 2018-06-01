@@ -17,8 +17,12 @@ private:
     int xStride, yStride;
 
     int outputWidth, outputHeight;
+
+    FloatType *delta;
 protected:
     void computeGradients() override;
+
+    void onInitialized() override;
 public:
     MeanPoolingLayer(
             int inputWidth, int inputHeight, int inputChannel,
@@ -39,6 +43,8 @@ public:
     int getOutputHeight();
 
     int getChannelCount();
+
+    ~MeanPoolingLayer() override;
 };
 
 

@@ -19,6 +19,8 @@ private:
     int *xOffset, *yOffset;
 
     int outputWidth, outputHeight;
+
+    FloatType *delta;
 protected:
     void computeGradients() override;
 

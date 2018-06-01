@@ -30,6 +30,8 @@ MeanPoolingLayer::MeanPoolingLayer(
 
     outputWidth = (inputWidth - windowWidth) / this->xStride + 1;
     outputHeight = (inputHeight - windowHeight) / this->yStride + 1;
+
+    delta = nullptr;
 }
 
 const FloatType* MeanPoolingLayer::feedForward(const FloatType *x)
@@ -51,7 +53,7 @@ void MeanPoolingLayer::backPropagate(const FloatType *y)
 
 FloatType* MeanPoolingLayer::getDelta()
 {
-    return deltaOutput;
+    return delta;
 }
 
 void MeanPoolingLayer::computeGradients() {}
@@ -69,4 +71,14 @@ int MeanPoolingLayer::getOutputHeight()
 int MeanPoolingLayer::getChannelCount()
 {
     return inputChannel;
+}
+
+void MeanPoolingLayer::onInitialized()
+{
+    delta = allocArray<FloatType>(outputDim * miniBatchSize);
+}
+
+MeanPoolingLayer::~MeanPoolingLayer()
+{
+    freeArray(delta);
 }

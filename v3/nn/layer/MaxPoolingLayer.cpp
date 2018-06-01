@@ -30,6 +30,8 @@ MaxPoolingLayer::MaxPoolingLayer(
 
     outputWidth = (inputWidth - windowWidth) / this->xStride + 1;
     outputHeight = (inputHeight - windowHeight) / this->yStride + 1;
+
+    delta = nullptr;
 }
 
 const FloatType* MaxPoolingLayer::feedForward(const FloatType *x)
@@ -53,11 +55,12 @@ void MaxPoolingLayer::onInitialized()
 {
     xOffset = allocArray<int>(outputDim * miniBatchSize);
     yOffset = allocArray<int>(outputDim * miniBatchSize);
+    delta = allocArray<FloatType>(outputDim * miniBatchSize);
 }
 
 FloatType* MaxPoolingLayer::getDelta()
 {
-    return deltaOutput;
+    return delta;
 }
 
 void MaxPoolingLayer::computeGradients() {}
@@ -81,4 +84,5 @@ MaxPoolingLayer::~MaxPoolingLayer()
 {
     freeArray(xOffset);
     freeArray(yOffset);
+    freeArray(delta);
 }
