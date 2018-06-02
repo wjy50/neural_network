@@ -31,15 +31,15 @@ bool test(const FloatType *a, const FloatType *y, int n)
 
 void newNNMNIST()
 {
-    int trainSetSize = 50000;
+    int trainSetSize = 1000;
 
     NeuralNetwork nn;
 
-    ConvLayer convLayer(28, 28, 1, 5, 5, 6, 1, 1, 2, 2, true);
-    nn.addLayer(&convLayer);
-
-    BatchNormLayer batchNormLayer(convLayer.getOutputDim());
+    BatchNormLayer batchNormLayer(28 * 28);
     nn.addLayer(&batchNormLayer);
+
+    ConvLayer convLayer(28, 28, 1, 5, 5, 6, 1, 1, 2, 2);
+    nn.addLayer(&convLayer);
 
     LReLULayer lReLULayer(convLayer.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer);
@@ -49,9 +49,6 @@ void newNNMNIST()
 
     ConvLayer convLayer1(poolingLayer.getOutputWidth(), poolingLayer.getOutputHeight(), poolingLayer.getChannelCount(), 3, 3, 16, 1, 1, 0, 0);
     nn.addLayer(&convLayer1);
-
-    BatchNormLayer batchNormLayer1(convLayer1.getOutputDim());
-    nn.addLayer(&batchNormLayer1);
 
     LReLULayer lReLULayer1(convLayer1.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer1);
@@ -87,8 +84,6 @@ void newNNMNIST()
     layer1.setOptimizer(&optimizer4);
     AdamOptimizer optimizer5;
     batchNormLayer.setOptimizer(&optimizer5);
-    AdamOptimizer optimizer6;
-    batchNormLayer1.setOptimizer(&optimizer6);
 
     MNISTDataSet trainSet("/home/wjy50/mnist/train-images.idx3-ubyte", "/home/wjy50/mnist/train-labels.idx1-ubyte");
     MNISTDataSet testSet("/home/wjy50/mnist/t10k-images.idx3-ubyte", "/home/wjy50/mnist/t10k-labels.idx1-ubyte");
@@ -145,8 +140,14 @@ void newNNCIFAR10()
 
     int trainSetSize = 50000;
 
-    ConvLayer convLayer(32, 32, 3, 5, 5, 6, 1, 1, 0, 0);
+    BatchNormLayer batchNormLayer(32 * 32 * 3);
+    nn.addLayer(&batchNormLayer);
+
+    ConvLayer convLayer(32, 32, 3, 5, 5, 6, 1, 1, 0, 0, true);
     nn.addLayer(&convLayer);
+
+    BatchNormLayer batchNormLayer1(convLayer.getOutputDim());
+    nn.addLayer(&batchNormLayer1);
 
     LReLULayer lReLULayer(convLayer.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer);
@@ -154,8 +155,11 @@ void newNNCIFAR10()
     MaxPoolingLayer poolingLayer(convLayer.getOutputWidth(), convLayer.getOutputHeight(), convLayer.getKernelCount(), 2, 2, 2, 2);
     nn.addLayer(&poolingLayer);
 
-    ConvLayer convLayer1(poolingLayer.getOutputWidth(), poolingLayer.getOutputHeight(), poolingLayer.getChannelCount(), 3, 3, 16, 1, 1, 0, 0);
+    ConvLayer convLayer1(poolingLayer.getOutputWidth(), poolingLayer.getOutputHeight(), poolingLayer.getChannelCount(), 3, 3, 16, 1, 1, 0, 0, true);
     nn.addLayer(&convLayer1);
+
+    BatchNormLayer batchNormLayer2(convLayer1.getOutputDim());
+    nn.addLayer(&batchNormLayer2);
 
     LReLULayer lReLULayer1(convLayer1.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer1);
@@ -163,17 +167,20 @@ void newNNCIFAR10()
     MeanPoolingLayer poolingLayer1(convLayer1.getOutputWidth(), convLayer1.getOutputHeight(), convLayer1.getKernelCount(), 2, 2, 2, 2);
     nn.addLayer(&poolingLayer1);
 
-    LinearLayer layer(poolingLayer1.getOutputDim(), 150);
+    LinearLayer layer(poolingLayer1.getOutputDim(), 150, true);
     nn.addLayer(&layer);
+
+    BatchNormLayer batchNormLayer3(layer.getOutputDim());
+    nn.addLayer(&batchNormLayer3);
 
     LReLULayer lReLULayer2(layer.getOutputDim(), 0.01);
     nn.addLayer(&lReLULayer2);
 
-    DropoutLayer dropoutLayer(lReLULayer2.getOutputDim());
+    /*DropoutLayer dropoutLayer(lReLULayer2.getOutputDim());
     dropoutLayer.setDropoutFraction(0.5);
-    nn.addLayer(&dropoutLayer);
+    nn.addLayer(&dropoutLayer);*/
 
-    LinearLayer layer1(dropoutLayer.getOutputDim(), 10);
+    LinearLayer layer1(lReLULayer2.getOutputDim(), 10);
     nn.addLayer(&layer1);
 
     SoftMaxOutputLayer output(layer1.getOutputDim());
@@ -199,6 +206,14 @@ void newNNCIFAR10()
     layer.setOptimizer(&optimizer3);
     AdamOptimizer optimizer4;
     layer1.setOptimizer(&optimizer4);
+    AdamOptimizer optimizer5;
+    batchNormLayer.setOptimizer(&optimizer5);
+    AdamOptimizer optimizer6;
+    batchNormLayer1.setOptimizer(&optimizer6);
+    AdamOptimizer optimizer7;
+    batchNormLayer2.setOptimizer(&optimizer7);
+    AdamOptimizer optimizer8;
+    batchNormLayer3.setOptimizer(&optimizer8);
 
     const char *paths[6] = {
             "/home/wjy50/cifar/data_batch_1.bin",
@@ -228,10 +243,8 @@ void newNNCIFAR10()
     FloatType label[10];
     for (int k = 0; k < 200; ++k) {
         long st = clock();
-        //layer.setDropoutFraction(0.5);
         nn.optimize(trainSet1, trainSetSize);
         int fail = 0;
-        //layer.setDropoutFraction(0);
         for (int j = 0; j < 10000; ++j) {
             testSet.getBatch(in, label, &j, 1);
             const FloatType *o = nn.feedForward(in);
@@ -269,7 +282,7 @@ int main()
     initializeCUDA();
 #endif
 
-    newNNMNIST();
+    newNNCIFAR10();
 
     /*FloatType v[] = {
             1, 2, 3, 0,
@@ -299,4 +312,3 @@ int main()
 }
 
 //TODO Adam/AdaMax自动转SGD
-//TODO batch normalization
