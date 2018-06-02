@@ -185,6 +185,6 @@ void bnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDel
 
 void bnGradients(FloatType *gamma, FloatType *beta, const FloatType *delta, const FloatType *normOut, int dim, int batchSize);
 
-void bnGlobalValues(FloatType *globalAvg, FloatType *globalOneDivDev, const FloatType *avgSum, const FloatType *varSum, int dim, int batchSize, int batchCount);
+void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *avg, const FloatType *var, int dim, int batchSize, int batchCount);
 
 #endif //NEURAL_NETWORK_INTERFACE_H

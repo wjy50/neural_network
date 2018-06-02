@@ -16,8 +16,7 @@ private:
     FloatType *gammaGradient, *betaGradient;
     FloatType *avg, *var, *oneDivDev;
     FloatType *xSubAvg, *deltaAvg, *normDelta, *deltaMulCenter;
-    FloatType *avgSum, *varSum;
-    FloatType *globalAvg, *globalOneDivDev;
+    FloatType *globalAvg, *globalVar, *globalOneDivDev;
 
     int miniBatchCount;
 protected:

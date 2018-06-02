@@ -23,12 +23,12 @@ BatchNormLayer::BatchNormLayer(int dim) : LayerBase(dim, dim)
     avg = allocArray<FloatType>(dim);
     var = allocArray<FloatType>(dim);
     oneDivDev = allocArray<FloatType>(dim);
-    avgSum = allocArray<FloatType>(dim);
-    varSum = allocArray<FloatType>(dim);
     deltaMulCenter = allocArray<FloatType>(dim);
     globalAvg = allocArray<FloatType>(dim);
+    globalVar = allocArray<FloatType>(dim);
     globalOneDivDev = allocArray<FloatType>(dim);
     clearArray<FloatType>(globalAvg, dim);
+    clearArray<FloatType>(globalVar, dim);
     clearArray<FloatType>(globalOneDivDev, dim);
 
     miniBatchCount = 0;
@@ -49,9 +49,7 @@ const FloatType* BatchNormLayer::feedForwardForOptimization(const FloatType *x)
     bnOneDivDev(oneDivDev, var, outputDim);
     batchNormalize(normOut, x, avg, oneDivDev, outputDim, miniBatchSize);
     bnTransform(output, normOut, gamma, beta, outputDim, miniBatchSize);
-    addVTo(avgSum, avgSum, avg, outputDim);
-    addVTo(varSum, varSum, var, outputDim);
-    bnGlobalValues(globalAvg, globalOneDivDev, avgSum, varSum, outputDim, miniBatchSize, ++miniBatchCount);
+    bnGlobalValues(globalAvg, globalVar, globalOneDivDev, avg, var, outputDim, miniBatchSize, ++miniBatchCount);
     return output;
 }
 
@@ -91,8 +89,7 @@ BatchNormLayer::~BatchNormLayer()
     freeArray(oneDivDev);
     freeArray(xSubAvg);
     freeArray(deltaAvg);
-    freeArray(avgSum);
-    freeArray(varSum);
+    freeArray(globalVar);
     freeArray(globalAvg);
     freeArray(globalOneDivDev);
     freeArray(deltaMulCenter);
