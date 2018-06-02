@@ -17,6 +17,8 @@
 #include "v3/nn/layer/DropoutLayer.h"
 #include "v3/data/cifar10/CIFAR10DataSet.h"
 #include "v3/nn/layer/BatchNormLayer.h"
+#include "v3/nn/AutoEncoder.h"
+#include "v3/nn/layer/activation/SigmoidOutputLayer.h"
 
 using namespace std;
 
@@ -88,26 +90,14 @@ void newNNMNIST()
     MNISTDataSet trainSet("/home/wjy50/mnist/train-images.idx3-ubyte", "/home/wjy50/mnist/train-labels.idx1-ubyte");
     MNISTDataSet testSet("/home/wjy50/mnist/t10k-images.idx3-ubyte", "/home/wjy50/mnist/t10k-labels.idx1-ubyte");
 
-    /*MNISTNormalizer normalizer;
-
-    normalizer.add(trainSet, trainSetSize);
-    normalizer.confirm();
-    normalizer.div(trainSet, trainSetSize);
-    normalizer.finish();
-
-    trainSet.setNormalizer(&normalizer);
-    testSet.setNormalizer(&normalizer);*/
-
     int noImprovementOccurredFor = 0;
     int minError = 0x7fffffff;
     FloatType in[28 * 28];
     FloatType label[10];
     for (int k = 0; k < 200; ++k) {
         long st = clock();
-        //layer.setDropoutFraction(0.5);
         nn.optimize(trainSet, trainSetSize);
         int fail = 0;
-        //layer.setDropoutFraction(0);
         for (int j = 50000; j < 60000; ++j) {
             trainSet.getBatch(in, label, &j, 1);
             const FloatType *o = nn.feedForward(in);
@@ -125,7 +115,6 @@ void newNNMNIST()
         if (noImprovementOccurredFor > 30) break;
     }
     int fail = 0;
-    //image.setTranslation(1, 1);
     for (int j = 0; j < 10000; ++j) {
         testSet.getBatch(in, label, &j, 1);
         const FloatType *o = nn.feedForward(in);
@@ -188,16 +177,6 @@ void newNNCIFAR10()
 
     nn.buildUpNetwork(20);
 
-    /*FloatType learningRate = 0.09;
-    SimpleSGDOptimizer optimizer1(learningRate, 5, trainSetSize, convLayer.getWeightCount(), convLayer.getBiasCount());
-    convLayer.setOptimizer(&optimizer1);
-    SimpleSGDOptimizer optimizer2(learningRate, 5, trainSetSize, convLayer1.getWeightCount(), convLayer1.getBiasCount());
-    convLayer1.setOptimizer(&optimizer2);
-    SimpleSGDOptimizer optimizer3(learningRate, 5, trainSetSize, layer.getWeightCount(), layer.getBiasCount());
-    layer.setOptimizer(&optimizer3);
-    SimpleSGDOptimizer optimizer4(learningRate, 5, trainSetSize, output.getWeightCount(), output.getBiasCount());
-    output.setOptimizer(&optimizer4);*/
-
     AdamOptimizer optimizer1;
     convLayer.setOptimizer(&optimizer1);
     AdamOptimizer optimizer2;
@@ -225,17 +204,6 @@ void newNNCIFAR10()
     };
     CIFAR10DataSet trainSet1(paths, 5);
     CIFAR10DataSet testSet(paths + 5, 1);
-
-    /*CIFARNormalizer normalizer;
-
-    normalizer.add(trainSet1);
-    normalizer.confirm();
-
-    normalizer.div(trainSet1);
-    normalizer.finish();
-
-    trainSet1.setNormalizer(&normalizer);
-    testSet.setNormalizer(&normalizer);*/
 
     int noImprovementOccurredFor = 0;
     int minError = 0x7fffffff;
@@ -275,6 +243,59 @@ void printM(const T *m, int r, int c)
     cout << endl;
 }
 
+void testAutoEncoder()
+{
+    AutoEncoder autoEncoder;
+
+    int trainSetSize = 5000;
+
+    ConvLayer encoder(28, 28, 1, 3, 3, 2);
+    autoEncoder.addLayer(&encoder);
+
+    LReLULayer lReLULayer(encoder.getOutputDim(), 0.01);
+    autoEncoder.addLayer(&lReLULayer);
+
+    ConvLayer decoder(26, 26, 2, 3, 3, 1, 1, 1, 2, 2);
+    autoEncoder.addLayer(&decoder);
+
+    SigmoidOutputLayer output(decoder.getOutputDim());
+    autoEncoder.addLayer(&output);
+
+    autoEncoder.buildUpAutoEncoder(20);
+
+    AdamOptimizer optimizer1;
+    encoder.setOptimizer(&optimizer1);
+    AdamOptimizer optimizer2;
+    decoder.setOptimizer(&optimizer2);
+
+    MNISTDataSet trainSet("/home/wjy50/mnist/train-images.idx3-ubyte", "/home/wjy50/mnist/train-labels.idx1-ubyte");
+    MNISTDataSet testSet("/home/wjy50/mnist/t10k-images.idx3-ubyte", "/home/wjy50/mnist/t10k-labels.idx1-ubyte");
+
+    FloatType in[28 * 28];
+    for (int k = 201; k < 10000; ++k) {
+        autoEncoder.optimize(trainSet, trainSetSize);
+        cout << "epoch" << k+1 << ':' << endl;
+        int j = 50000 + k;
+        trainSet.getBatch(in, nullptr, &j, 1);
+        const FloatType *o = autoEncoder.feedForward(in);
+        for (int i = 0; i < 28; ++i) {
+            for (int l = 0; l < 28; ++l) {
+                auto r = static_cast<int>(o[i * 28 + l] * 9);
+                if (r > 0) cout << r << ' ';
+                else cout << "  ";
+            }
+            cout << "    ";
+            for (int l = 0; l < 28; ++l) {
+                auto r = static_cast<int>(in[i * 28 + l] * 9);
+                if (r > 0) cout << r << ' ';
+                else cout << "  ";
+            }
+            cout << endl;
+        }
+        cout << endl;
+    }
+}
+
 int main()
 {
     std::cout << "Hello, World!" << std::endl;
@@ -282,7 +303,9 @@ int main()
     initializeCUDA();
 #endif
 
-    newNNCIFAR10();
+    testAutoEncoder();
+
+    //newNNCIFAR10();
 
     /*FloatType v[] = {
             1, 2, 3, 0,

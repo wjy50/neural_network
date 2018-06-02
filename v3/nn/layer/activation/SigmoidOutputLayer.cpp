@@ -6,7 +6,7 @@
 #include "SigmoidOutputLayer.h"
 #include "../../../interface/interface.h"
 
-SigmoidOutputLayer::SigmoidOutputLayer() : LayerBase(1, 1) {}
+SigmoidOutputLayer::SigmoidOutputLayer(int dim) : LayerBase(dim, dim) {}
 
 const FloatType * SigmoidOutputLayer::feedForward(const FloatType *x)
 {
@@ -27,7 +27,7 @@ void SigmoidOutputLayer::backPropagate(const FloatType *y)
 
 FloatType* SigmoidOutputLayer::getDelta()
 {
-    assert("You cannot get delta from sigmoid output layer" == nullptr);
+    //assert("You cannot get delta from a sigmoid output layer" == nullptr);
 }
 
 void SigmoidOutputLayer::computeGradients() {}

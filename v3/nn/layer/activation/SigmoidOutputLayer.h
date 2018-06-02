@@ -13,7 +13,7 @@ class SigmoidOutputLayer : public LayerBase
 protected:
     void computeGradients() override;
 public:
-    SigmoidOutputLayer();
+    explicit SigmoidOutputLayer(int dim);
 
     FloatType *getDelta() override;
 

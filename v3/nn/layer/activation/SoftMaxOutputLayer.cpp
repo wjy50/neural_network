@@ -27,7 +27,7 @@ void SoftMaxOutputLayer::backPropagate(const FloatType *y)
 
 FloatType* SoftMaxOutputLayer::getDelta()
 {
-    //assert("You cannot get delta from soft max output layer" == nullptr);
+    //assert("You cannot get delta from a soft max output layer" == nullptr);
 }
 
 void SoftMaxOutputLayer::computeGradients() {}
