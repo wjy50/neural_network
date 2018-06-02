@@ -208,7 +208,7 @@ void averageVTo(FloatType *r, const FloatType *v, int dim, int count)
     }
 }
 
-void varianceVTo(FloatType *r, const FloatType *v, const FloatType *avg, int dim, int count)
+/*void varianceVTo(FloatType *r, const FloatType *v, const FloatType *avg, int dim, int count)
 {
     memset(r, 0, dim * sizeof(FloatType));
     for (int i = 0; i < count; ++i) {
@@ -221,7 +221,7 @@ void varianceVTo(FloatType *r, const FloatType *v, const FloatType *avg, int dim
     for (int i = 0; i < dim; ++i) {
         r[i] /= count;
     }
-}
+}*/
 
 void meanPooling(const FloatType *in, int inputWidth, int inputHeight,
                  FloatType *out, int outputWidth, int outputHeight,
@@ -643,7 +643,7 @@ void getCIFAR10Batch(FloatType *data, FloatType *labels,
 void bnOneDivDev(FloatType *out, const FloatType *var, int size)
 {
     for (int i = 0; i < size; ++i) {
-        out[i] = static_cast<FloatType>(1) / std::sqrt(var[i] + static_cast<FloatType>(1e-6));
+        out[i] = static_cast<FloatType>(1) / std::sqrt(var[i] + static_cast<FloatType>(1e-4));
     }
 }
 
@@ -679,17 +679,6 @@ void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *gamm
     }
 }
 
-void bnDC_dNormOut(FloatType *out, const FloatType *delta, const FloatType *gamma, int dim, int batchSize)
-{
-    for (int i = 0; i < batchSize; ++i) {
-        FloatType *curOut = out + i * dim;
-        const FloatType *curDelta = delta + i * dim;
-        for (int j = 0; j < dim; ++j) {
-            curOut[j] = curDelta[j] * gamma[j];
-        }
-    }
-}
-
 void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim, int batchSize)
 {
     for (int i = 0; i < batchSize; ++i) {
@@ -701,54 +690,39 @@ void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim
     }
 }
 
-void bnDC_dVar(FloatType *out, const FloatType *oneDivDev, const FloatType *dC_dNormOut, const FloatType *xSubAvg, int dim, int batchSize)
+void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize)
 {
-    memset(out, 0, dim * sizeof(FloatType));
     for (int i = 0; i < batchSize; ++i) {
-        const FloatType *curDC_dNormOut = dC_dNormOut + i * dim;
         const FloatType *curXSubAvg = xSubAvg + i * dim;
         for (int j = 0; j < dim; ++j) {
-            out[j] += curDC_dNormOut[j] * curXSubAvg[j];
+            out[j] += curXSubAvg[j] * curXSubAvg[j];
         }
     }
     for (int i = 0; i < dim; ++i) {
-        out[i] *= oneDivDev[i] * oneDivDev[i] * oneDivDev[i] / -2;
+        out[i] /= batchSize;
     }
 }
 
-void bnMidComp(FloatType *out, const FloatType *dC_dNormOut, const FloatType *oneDivDev, const FloatType *dC_dVar, const FloatType *xSubAvg, int dim, int batchSize)
-{
-    for (int i = 0; i < batchSize; ++i) {
-        FloatType *curOut = out + i * dim;
-        const FloatType *curDC_dNormOut = dC_dNormOut + i * dim;
-        const FloatType *curXSubAvg = xSubAvg + i * dim;
-        for (int j = 0; j < dim; ++j) {
-            curOut[j] = curDC_dNormOut[j] * oneDivDev[j] + dC_dVar[j] * curXSubAvg[j] * 2 / batchSize;
-        }
-    }
-}
-
-void bnDC_dAvg(FloatType *out, const FloatType *midComp, int dim, int batchSize)
+void bnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize)
 {
     memset(out, 0, dim * sizeof(FloatType));
     for (int i = 0; i < batchSize; ++i) {
-        const FloatType *curMidComp = midComp + i * dim;
+        const FloatType *curDelta = delta + i * dim;
+        const FloatType *curXSubAvg = xSubAvg + i * dim;
         for (int j = 0; j < dim; ++j) {
-            out[j] += curMidComp[j];
+            out[j] += curDelta[j] * curXSubAvg[j];
         }
-    }
-    for (int i = 0; i < dim; ++i) {
-        out[i] /= -batchSize;
     }
 }
 
-void bnBackProp(FloatType *out, const FloatType *midComp, const FloatType *dC_dAvg, int dim, int batchSize)
+void bnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDelta, const FloatType *normOut, const FloatType *var, const FloatType *deltaMulCenter, int dim, int batchSize)
 {
     for (int i = 0; i < batchSize; ++i) {
         FloatType *curOut = out + i * dim;
-        const FloatType *curMidComp = midComp + i * dim;
+        const FloatType *curNormDelta = normDelta + i * dim;
+        const FloatType *curNormOut = normOut + i * dim;
         for (int j = 0; j < dim; ++j) {
-            curOut[j] = curMidComp[j] + dC_dAvg[j];
+            curOut[j] = gamma[j] * (curNormDelta[j] - curNormOut[j] * deltaMulCenter[j] / ((var[j] + static_cast<FloatType>(1e-4)) * batchSize));
         }
     }
 }
@@ -773,7 +747,7 @@ void bnGlobalValues(FloatType *globalAvg, FloatType *globalOneDivDev, const Floa
         globalAvg[i] = avgSum[i] / batchCount;
     }
     for (int i = 0; i < dim; ++i) {
-        globalOneDivDev[i] = static_cast<FloatType>(1) * batchSize / (std::sqrt(varSum[i] / batchCount + static_cast<FloatType>(1e-6)) * (batchSize - 1));
+        globalOneDivDev[i] = static_cast<FloatType>(1) / std::sqrt((varSum[i] * batchSize / (batchCount * (batchSize - 1))) + static_cast<FloatType>(1e-4));
     }
 }
 

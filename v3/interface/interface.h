@@ -56,7 +56,7 @@ void multiplyNVTo(FloatType *r, FloatType n, const FloatType *v, int dim);
 
 void averageVTo(FloatType *r, const FloatType *v, int dim, int count);
 
-void varianceVTo(FloatType *r, const FloatType *v, const FloatType *avg, int dim, int count);
+//void varianceVTo(FloatType *r, const FloatType *v, const FloatType *avg, int dim, int count);
 
 #endif
 
@@ -175,17 +175,13 @@ void batchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, co
 
 void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *gamma, const FloatType *beta, int dim, int batchSize);
 
-void bnDC_dNormOut(FloatType *out, const FloatType *delta, const FloatType *gamma, int dim, int batchSize);
-
 void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim, int batchSize);
 
-void bnDC_dVar(FloatType *out, const FloatType *oneDivDev, const FloatType *dC_dNormOut, const FloatType *xSubAvg, int dim, int batchSize);
+void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize);
 
-void bnMidComp(FloatType *out, const FloatType *dC_dNormOut, const FloatType *oneDivDev, const FloatType *dC_dVar, const FloatType *xSubAvg, int dim, int batchSize);
+void bnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize);
 
-void bnDC_dAvg(FloatType *out, const FloatType *midComp, int dim, int batchSize);
-
-void bnBackProp(FloatType *out, const FloatType *midComp, const FloatType *dC_dAvg, int dim, int batchSize);
+void bnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDelta, const FloatType *normOut, const FloatType *var, const FloatType *deltaMulCenter, int dim, int batchSize);
 
 void bnGradients(FloatType *gamma, FloatType *beta, const FloatType *delta, const FloatType *normOut, int dim, int batchSize);
 

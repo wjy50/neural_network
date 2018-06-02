@@ -15,9 +15,7 @@ private:
     FloatType *gamma, *beta;
     FloatType *gammaGradient, *betaGradient;
     FloatType *avg, *var, *oneDivDev;
-    FloatType *dC_dNormOut, *dC_dVar, *dC_dAvg;
-    FloatType *xSubAvg;
-    FloatType *midComp;
+    FloatType *xSubAvg, *deltaAvg, *normDelta, *deltaMulCenter;
     FloatType *avgSum, *varSum;
     FloatType *globalAvg, *globalOneDivDev;
 
