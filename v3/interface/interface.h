@@ -11,6 +11,11 @@
 #if ENABLE_CUDA
 
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
+
+extern cublasHandle_t M_CUBLAS_HANDLE;
+
+extern FloatType DEF_ALPHA, DEF_BETA;
 
 #define multiplyMVTo(r, m, v, x, y) M_CUBLAS_GEMV(M_CUBLAS_HANDLE, CUBLAS_OP_T, (y), (x), &DEF_ALPHA, m, (y), (v), 1, &DEF_BETA, (r), 1)
 
@@ -27,6 +32,10 @@ void clearArray(T *arr, int len)
 {
     cudaMemset(arr, 0, len * sizeof(T));
 }
+
+void initializeCUDA();
+
+void destroyCUDA();
 
 #else
 
