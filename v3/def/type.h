@@ -15,6 +15,8 @@ typedef double FloatType;
 
 #define M_CUBLAS_GEMM cublasDgemm_v2
 
+#define CU_EXP exp
+
 #else
 
 typedef float FloatType;
@@ -22,6 +24,8 @@ typedef float FloatType;
 #define M_CUBLAS_GEMV cublasSgemv_v2
 
 #define M_CUBLAS_GEMM cublasSgemm_v2
+
+#define CU_EXP expf
 
 #endif
 

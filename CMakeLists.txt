@@ -1,16 +1,26 @@
 cmake_minimum_required(VERSION 3.10)
 project(neural_network)
 
+set(ENABLE_CUDA 0)
+
+if(${ENABLE_CUDA})
+
+    FIND_PACKAGE(CUDA REQUIRED)
+
+    SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11;)
+
+    include_directories(/usr/local/cuda/include)
+
+    link_directories(/usr/local/cuda/lib64)
+
+endif(${ENABLE_CUDA})
+
 set(CMAKE_CXX_STANDARD 11)
-
-include_directories(/usr/local/cuda/include)
-
-link_directories(/usr/local/cuda/lib64)
 
 ADD_DEFINITIONS(-O2)
 
-add_executable(
-        neural_network
+set(
+        SRC_LIST
 
         main.cpp
         v3/nn/layer/base/LayerBase.cpp
@@ -56,6 +66,27 @@ add_executable(
         v3/utils/permutation.h
         v3/nn/layer/DropoutLayer.cpp
         v3/nn/layer/DropoutLayer.h
-        v3/nn/layer/BatchNormLayer.cpp v3/nn/layer/BatchNormLayer.h v3/nn/AutoEncoder.cpp v3/nn/AutoEncoder.h)
+        v3/nn/layer/BatchNormLayer.cpp
+        v3/nn/layer/BatchNormLayer.h
+        v3/nn/AutoEncoder.cpp
+        v3/nn/AutoEncoder.h)
 
-target_link_libraries(neural_network cudart cublas)
+if(${ENABLE_CUDA})
+
+    cuda_add_executable(
+            neural_network
+
+            ${SRC_LIST}
+    )
+
+    target_link_libraries(neural_network cudart cublas)
+
+else()
+
+    add_executable(
+            neural_network
+
+            ${SRC_LIST}
+    )
+
+endif()
