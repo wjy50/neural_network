@@ -61,3 +61,29 @@ int MNISTDataSet::getCount()
 {
     return count;
 }
+
+MNISTData2Bmp::MNISTData2Bmp(const char *path, int w, int h, bool invert) : Data2Bmp(path, w, h, 24)
+{
+    this->invert = invert;
+}
+
+void MNISTData2Bmp::writeData(const FloatType *data)
+{
+    unique_ptr<unsigned char[]> buffer = make_unique_array<unsigned char[]>(static_cast<size_t>(w) * static_cast<size_t>(h) * 3);
+    if (invert) {
+        for (int i = 0; i < w * h; ++i) {
+            auto c = static_cast<unsigned char>(data[i] > 1e-3 ? ((static_cast<unsigned int>(data[i] * 0xff) & 0xffu) ^ 0xffu) : 0xffu);
+            for (int j = 0; j < 3; ++j) {
+                buffer[i * 3 + j] = c;
+            }
+        }
+    } else {
+        for (int i = 0; i < w * h; ++i) {
+            auto c = static_cast<unsigned char>(data[i] > 1e-3 ? (static_cast<unsigned int>(data[i] * 0xff) & 0xffu) : 0);
+            for (int j = 0; j < 3; ++j) {
+                buffer[i * 3 + j] = c;
+            }
+        }
+    }
+    stream.write(reinterpret_cast<const char *>(buffer.get()), w * h * 3);
+}

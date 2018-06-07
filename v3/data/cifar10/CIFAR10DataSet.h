@@ -8,6 +8,15 @@
 
 #include "../base/DataSetBase.h"
 #include "../../utils/UniquePointerExt.h"
+#include "../base/Data2Bmp.h"
+
+class CIFAR10Data2Bmp : public Data2Bmp
+{
+public:
+    explicit CIFAR10Data2Bmp(const char *path, int w = 32, int h = 32);
+
+    void writeData(const FloatType *data) override;
+};
 
 class CIFAR10DataSet : public DataSetBase
 {
