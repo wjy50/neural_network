@@ -3,6 +3,7 @@
  */
 
 #include <cassert>
+#include <iostream>
 #include "NeuralNetwork.h"
 #include "../interface/interface.h"
 #include "../utils/UniquePointerExt.h"
@@ -14,6 +15,8 @@ NeuralNetwork::NeuralNetwork()
     miniBatchSize = 0;
     inputs = nullptr;
     labels = nullptr;
+    indices = nullptr;
+    indexCap = 0;
 }
 
 void NeuralNetwork::addLayer(LayerBase *layer)
@@ -51,15 +54,17 @@ const FloatType* NeuralNetwork::feedForward(const FloatType *x)
 void NeuralNetwork::optimize(DataSetBase &trainSet, int altTrainSetSize)
 {
     int trainSetSize = altTrainSetSize > 0 ? altTrainSetSize : trainSet.getCount();
-    std::unique_ptr<int[]> indices = make_unique_array<int[]>(static_cast<size_t>(trainSetSize));
-    randomPermutation<int>(indices.get(), trainSetSize);
+    ensureIndexCap(trainSetSize);
+    randomPermutation(indices, trainSetSize);
     int miniBatchCount = trainSetSize / miniBatchSize;
     for (int t = 0; t < miniBatchCount; ++t) {
-        trainSet.getBatch(inputs, labels, indices.get() + miniBatchSize * t, miniBatchSize);
+        trainSet.getBatch(inputs, labels, indices + miniBatchSize * t, miniBatchSize);
 
         const FloatType *in = inputs;
         for (LayerBase *layer : layers) {
+            //long st = clock();
             in = layer->feedForwardForOptimization(in);
+            //std::cout << clock() - st << std::endl;
         }
 
         auto layerCount = static_cast<int>(layers.size());
@@ -72,11 +77,21 @@ void NeuralNetwork::optimize(DataSetBase &trainSet, int altTrainSetSize)
         for (LayerBase *layer : layers) {
             layer->updateParameters();
         }
+        //std::cout << std::endl;
     }
+}
+
+void NeuralNetwork::ensureIndexCap(int size)
+{
+    if (indexCap == 0) indexCap = 1;
+    while (indexCap < size) indexCap <<= 1;
+    freeArray(indices);
+    indices = allocArray<int>(indexCap);
 }
 
 NeuralNetwork::~NeuralNetwork()
 {
     freeArray(inputs);
     freeArray(labels);
+    freeArray(indices);
 }

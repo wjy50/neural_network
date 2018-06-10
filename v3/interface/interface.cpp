@@ -741,7 +741,7 @@ void bnGradients(FloatType *gamma, FloatType *beta, const FloatType *delta, cons
     }
 }
 
-void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *avg, const FloatType *var, int dim, int batchSize, int batchCount)
+void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *avg, const FloatType *var, int dim)
 {
     for (int i = 0; i < dim; ++i) {
         globalAvg[i] = globalAvg[i] * static_cast<FloatType>(0.9) + avg[i] * static_cast<FloatType>(0.1);
@@ -751,6 +751,13 @@ void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globa
     }
     for (int i = 0; i < dim; ++i) {
         globalOneDivDev[i] = static_cast<FloatType>(1) / std::sqrt(globalVar[i] + static_cast<FloatType>(1e-4));
+    }
+}
+
+void incArray(int *arr, int len, int bias)
+{
+    for (int i = 0; i < len; ++i) {
+        arr[i] = i + bias;
     }
 }
 

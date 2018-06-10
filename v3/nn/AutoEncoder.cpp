@@ -13,6 +13,8 @@ AutoEncoder::AutoEncoder()
     miniBatchSize = 0;
     built = false;
     inputs = nullptr;
+    indices = nullptr;
+    indexCap = 0;
 }
 
 void AutoEncoder::addLayer(LayerBase *layer)
@@ -49,11 +51,11 @@ const FloatType* AutoEncoder::feedForward(const FloatType *x)
 void AutoEncoder::optimize(DataSetBase &trainSet, int altTrainSetSize)
 {
     int trainSetSize = altTrainSetSize > 0 ? altTrainSetSize : trainSet.getCount();
-    std::unique_ptr<int[]> indices = make_unique_array<int[]>(static_cast<size_t>(trainSetSize));
-    randomPermutation<int>(indices.get(), trainSetSize);
+    ensureIndexCap(trainSetSize);
+    randomPermutation(indices, trainSetSize);
     int miniBatchCount = trainSetSize / miniBatchSize;
     for (int t = 0; t < miniBatchCount; ++t) {
-        trainSet.getBatch(inputs, nullptr, indices.get() + miniBatchSize * t, miniBatchSize);
+        trainSet.getBatch(inputs, nullptr, indices + miniBatchSize * t, miniBatchSize);
 
         const FloatType *in = inputs;
         for (LayerBase *layer : layers) {
@@ -73,7 +75,16 @@ void AutoEncoder::optimize(DataSetBase &trainSet, int altTrainSetSize)
     }
 }
 
+void AutoEncoder::ensureIndexCap(int size)
+{
+    if (indexCap == 0) indexCap = 1;
+    while (indexCap < size) indexCap <<= 1;
+    freeArray(indices);
+    indices = allocArray<int>(indexCap);
+}
+
 AutoEncoder::~AutoEncoder()
 {
     freeArray(inputs);
+    freeArray(indices);
 }

@@ -14,8 +14,8 @@ std::unique_ptr<T> make_unique(Args&&... args)
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 };
 
-template<typename T>
-std::unique_ptr<T> make_unique_array(size_t size)
+template<typename T, typename SizeT>
+std::unique_ptr<T> make_unique_array(SizeT size)
 {
     static_assert(std::is_array<T>::value&& std::extent<T>::value==0,"T must be dynamic array");
     using U=typename std::remove_extent<T>::type;

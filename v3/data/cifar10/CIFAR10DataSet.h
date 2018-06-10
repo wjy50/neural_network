@@ -23,13 +23,15 @@ class CIFAR10DataSet : public DataSetBase
 private:
     int count;
 
-    std::unique_ptr<unsigned char[]> buffer;
+    unsigned char *buffer;
 public:
     CIFAR10DataSet(const char **path, int n);
 
     int getCount() override;
 
     void getBatch(FloatType *data, FloatType *labels, const int *indices, int count) override;
+
+    ~CIFAR10DataSet();
 };
 
 

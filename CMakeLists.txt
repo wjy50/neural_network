@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 project(neural_network)
 
-set(ENABLE_CUDA 0)
+set(ENABLE_CUDA 1)
 
 if(${ENABLE_CUDA})
 
     FIND_PACKAGE(CUDA REQUIRED)
 
-    SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11;)
+    SET(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++11")
 
     include_directories(/usr/local/cuda/include)
 
@@ -69,7 +69,10 @@ set(
         v3/nn/layer/BatchNormLayer.cpp
         v3/nn/layer/BatchNormLayer.h
         v3/nn/AutoEncoder.cpp
-        v3/nn/AutoEncoder.h)
+        v3/nn/AutoEncoder.h
+        v3/data/base/Data2Bmp.cpp
+        v3/data/base/Data2Bmp.h
+        v3/utils/permutation.cpp)
 
 if(${ENABLE_CUDA})
 

@@ -17,6 +17,10 @@ typedef double FloatType;
 
 #define CU_EXP exp
 
+#define CU_FMAX fmax
+
+#define CU_FABS fabs
+
 #else
 
 typedef float FloatType;
@@ -26,6 +30,10 @@ typedef float FloatType;
 #define M_CUBLAS_GEMM cublasSgemm_v2
 
 #define CU_EXP expf
+
+#define CU_FMAX fmaxf
+
+#define CU_FABS fabsf
 
 #endif
 

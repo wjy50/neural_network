@@ -17,8 +17,6 @@ private:
     FloatType *avg, *var, *oneDivDev;
     FloatType *xSubAvg, *deltaAvg, *normDelta, *deltaMulCenter;
     FloatType *globalAvg, *globalVar, *globalOneDivDev;
-
-    int miniBatchCount;
 protected:
     void onInitialized() override;
 

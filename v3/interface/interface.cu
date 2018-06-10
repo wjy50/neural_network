@@ -3,8 +3,19 @@
  */
 
 #include <random>
+#include <iostream>
+#include <cstring>
+#include <cublas_v2.h>
 #include "interface.h"
 #include "../utils/UniquePointerExt.h"
+#include "../utils/permutation.h"
+#include "../nn/AutoEncoder.h"
+#include "../nn/layer/activation/LReLULayer.h"
+#include "../nn/layer/activation/SigmoidOutputLayer.h"
+#include "../nn/optimizer/AdamOptimizer.h"
+#include "../nn/layer/LinearLayer.h"
+#include "../data/mnist/MNISTDataSet.h"
+#include "../nn/layer/ConvLayer.h"
 
 #if ENABLE_CUDA
 
@@ -12,17 +23,33 @@ cublasHandle_t M_CUBLAS_HANDLE;
 
 FloatType DEF_ALPHA = 1, DEF_BETA = 0;
 
-#define DEF_THREADS_PER_BLOCK 512
+FloatType *sharedDeviceFloatArray = nullptr;
+int sharedDeviceFloatArrayLen = 0;
 
 void initializeCUDA()
 {
     cublasCreate_v2(&M_CUBLAS_HANDLE);
+    sharedDeviceFloatArray = nullptr;
+    sharedDeviceFloatArrayLen = 0;
 }
 
 void destroyCUDA()
 {
+    freeArray(sharedDeviceFloatArray);
+    sharedDeviceFloatArray = nullptr;
+    sharedDeviceFloatArrayLen = 0;
     cublasDestroy_v2(M_CUBLAS_HANDLE);
     cudaThreadExit();
+}
+
+void ensureSharedDeviceFloatArraySize(int size)
+{
+    if (sharedDeviceFloatArrayLen < size) {
+        if (!sharedDeviceFloatArray) sharedDeviceFloatArrayLen = 1;
+        while (sharedDeviceFloatArrayLen < size) sharedDeviceFloatArrayLen <<= 1;
+        freeArray(sharedDeviceFloatArray);
+        sharedDeviceFloatArray = allocArray<FloatType>(sharedDeviceFloatArrayLen);
+    }
 }
 
 __global__ void cuLeakyReLU(FloatType *out, const FloatType *in, int len, FloatType l)
@@ -130,37 +157,103 @@ void subtractVTo(FloatType *r, const FloatType *a, const FloatType *b, int len)
     cuSubtractVTo<<<blocks, threadsPerBlock>>>(r, a, b, len);
 }
 
-__global__ void cuExpArr(FloatType *out, const FloatType *in, int len)
+__global__ void cuSoftMax(FloatType *out, const FloatType *in, int blockLen, int totalLen, int groupLen, int maxP2)
+{
+    int offset = blockIdx.x * blockLen;
+    int index = offset + threadIdx.x;
+    blockLen = CU_MIN(totalLen - offset, blockLen);
+    extern __shared__ FloatType sharedM[];
+    if (threadIdx.x < blockLen) {
+        out[index] = CU_EXP(in[index]);
+        sharedM[threadIdx.x] = out[index];
+    }
+    int groupId = threadIdx.x / groupLen;
+    int groupOffset = groupId * groupLen;
+    int indexInGroup = threadIdx.x % groupLen;
+    __syncthreads();
+    for (; maxP2 > 0; maxP2 >>= 1) {
+        if (threadIdx.x < blockLen && indexInGroup < maxP2 && indexInGroup + maxP2 < groupLen) {
+            sharedM[threadIdx.x] += sharedM[threadIdx.x + maxP2];
+        }
+        __syncthreads();
+    }
+    if (threadIdx.x < blockLen) {
+        out[index] /= sharedM[groupOffset];
+    }
+}
+
+__global__ void cuSoftMaxExp(FloatType *out, const FloatType *in, int totalLen)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < len) {
+    if (index < totalLen) {
         out[index] = CU_EXP(in[index]);
     }
 }
 
-__global__ void cuSoftMax(FloatType *out, int len, int count)
+__global__ void cuGroupSum(FloatType *sum, const FloatType *in, int groupLen, int blocksPerGroup, FloatType div = 1)
+{
+    int groupId = blockIdx.x / blocksPerGroup;
+    int blockIdInGroup = blockIdx.x % blocksPerGroup;
+    int groupOffset = groupId * groupLen;
+    int offsetInGroup = blockIdInGroup * blockDim.x;
+    int offset = groupOffset + offsetInGroup;
+    int additionLen = CU_MIN(blockDim.x, groupLen - offsetInGroup);
+    int maxP2 = 1;
+    while (maxP2 < additionLen) maxP2 <<= 1;
+    maxP2 >>= 1;
+    extern __shared__ FloatType sharedM[];
+    if (offsetInGroup + threadIdx.x < groupLen) {
+        sharedM[threadIdx.x] = in[offset + threadIdx.x];
+    }
+    __syncthreads();
+    for (; maxP2 > 0; maxP2 >>= 1) {
+        if (offsetInGroup + threadIdx.x < groupLen && threadIdx.x < maxP2 && threadIdx.x + maxP2 < additionLen) {
+            sharedM[threadIdx.x] += sharedM[threadIdx.x + maxP2];
+        }
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+        sum[blockIdx.x] = sharedM[threadIdx.x] / div;
+    }
+}
+
+__global__ void cuSoftMaxNormalize(FloatType *out, const FloatType *sum, int groupLen, int totalLen)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < count) {
-        int offset = index * len;
-        FloatType sum = 0;
-        for (int i = 0; i < len; ++i) {
-            sum += out[offset + i];
-        }
-        for (int i = 0; i < len; ++i) {
-            out[offset + i] /= sum;
-        }
+    if (index < totalLen) {
+        out[index] /= sum[index / groupLen];
     }
 }
 
 void softMaxOutput(FloatType *out, const FloatType *in, int len, int count)
 {
     int threadsPerBlock = DEF_THREADS_PER_BLOCK;
-    int blocks = ((len * count) + threadsPerBlock - 1) / threadsPerBlock;
-    cuExpArr<<<blocks, threadsPerBlock>>>(out, in, len * count);
-    int smThreadsPerBlock = 256;
-    int smBlocks = (count + smThreadsPerBlock - 1) / smThreadsPerBlock;
-    cuSoftMax<<<smBlocks, smThreadsPerBlock>>>(out, len, count);
+    int totalLen = len * count;
+    if (len <= threadsPerBlock) {
+        int blockLen = threadsPerBlock / len * len;
+        int blocks = (totalLen + blockLen - 1) / blockLen;
+        int maxP2 = 1;
+        while (maxP2 < len) maxP2 <<= 1;
+        maxP2 >>= 1;
+        cuSoftMax<<<blocks, threadsPerBlock, threadsPerBlock * sizeof(FloatType)>>>(out, in, blockLen, totalLen, len, maxP2);
+    } else {
+        int expBlocks = (totalLen + threadsPerBlock - 1) / threadsPerBlock;
+        cuSoftMaxExp<<<expBlocks, threadsPerBlock>>>(out, in, totalLen);
+
+        int blocksPerGroup = (len + threadsPerBlock - 1) / threadsPerBlock;
+        int blocks = blocksPerGroup * count;
+        ensureSharedDeviceFloatArraySize(blocks);
+        cuGroupSum<<<blocks, threadsPerBlock, threadsPerBlock * sizeof(FloatType)>>>(sharedDeviceFloatArray, out, len, blocksPerGroup);
+        int nLen = blocksPerGroup;
+        blocksPerGroup = (nLen + threadsPerBlock - 1) / threadsPerBlock;
+        for (; nLen > 1; ) {
+            cuGroupSum<<<blocks, threadsPerBlock, threadsPerBlock * sizeof(FloatType)>>>(sharedDeviceFloatArray, sharedDeviceFloatArray, nLen, blocksPerGroup);
+            nLen = blocksPerGroup;
+            blocksPerGroup = (nLen + threadsPerBlock - 1) / threadsPerBlock;
+        }
+
+        cuSoftMaxNormalize<<<blocks, threadsPerBlock>>>(out, sharedDeviceFloatArray, len, totalLen);
+    }
 }
 
 __global__ void cuLinearLayerBias(FloatType *vs, int dim, const FloatType *biases, int len)
@@ -246,6 +339,1041 @@ void l2SGD(FloatType *params, const FloatType *gradients, FloatType eta, FloatTy
 {
     int threadsPerBlock = DEF_THREADS_PER_BLOCK;
     int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuL2SGD<<<blocks, threadsPerBlock>>>(params, gradients, eta, reg, len);
 }
+
+__global__ void cuAdamFirstMomentEstimate(FloatType *m, FloatType beta, FloatType oneMBeta, const FloatType *g, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        m[index] = m[index] * beta + oneMBeta * g[index];
+    }
+}
+
+void adamFirstMomentEstimate(FloatType *m, FloatType beta, FloatType oneMBeta, const FloatType *g, int len)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuAdamFirstMomentEstimate<<<blocks, threadsPerBlock>>>(m, beta, oneMBeta, g, len);
+}
+
+__global__ void cuAdamSecondMomentEstimate(FloatType *v, FloatType beta, FloatType oneMBeta, const FloatType *g, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        v[index] = v[index] * beta + oneMBeta * g[index] * g[index];
+    }
+}
+
+void adamSecondMomentEstimate(FloatType *v, FloatType beta, FloatType oneMBeta, const FloatType *g, int len)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuAdamSecondMomentEstimate<<<blocks, threadsPerBlock>>>(v, beta, oneMBeta, g, len);
+}
+
+__global__ void cuAdamUpdate(FloatType *params, const FloatType *m, const FloatType *v, int len,
+                             FloatType alpha, FloatType oneMBeta1T, FloatType oneMBeta2T
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        params[index] += alpha * m[index] / (oneMBeta1T * sqrt(v[index] / oneMBeta2T) + 1e-6);
+    }
+}
+
+void adamUpdate(FloatType *params, const FloatType *m, const FloatType *v, int len, FloatType alpha,
+                FloatType oneMBeta1T, FloatType oneMBeta2T
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuAdamUpdate<<<blocks, threadsPerBlock>>>(params, m, v, len, alpha, oneMBeta1T, oneMBeta2T);
+}
+
+__global__ void cuAdaMaxEWIN(FloatType *u, FloatType beta, const FloatType *g, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        u[index] = CU_FMAX(beta * u[index], CU_FABS(g[index]));
+    }
+}
+
+void adaMaxEWIN(FloatType *u, FloatType beta, const FloatType *g, int len)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuAdaMaxEWIN<<<blocks, threadsPerBlock>>>(u, beta, g, len);
+}
+
+__global__ void cuAdaMaxUpdate(FloatType *params, const FloatType *m, const FloatType *u, int len,
+                               FloatType learningRate, FloatType betaTMOne
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        params[index] += learningRate * m[index] / (betaTMOne * u[index] + 1e-6);
+    }
+}
+
+void adaMaxUpdate(FloatType *params, const FloatType *m, const FloatType *u, int len,
+                  FloatType learningRate, FloatType betaTMOne
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuAdaMaxUpdate<<<blocks, threadsPerBlock>>>(params, m, u, len, learningRate, betaTMOne);
+}
+
+__global__ void cuBnOneDivDev(FloatType *out, const FloatType *var, int size)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < size) {
+        out[index] = static_cast<FloatType>(1) / std::sqrt(var[index] + static_cast<FloatType>(1e-4));
+    }
+}
+
+void bnOneDivDev(FloatType *out, const FloatType *var, int size)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (size + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnOneDivDev<<<blocks, threadsPerBlock>>>(out, var, size);
+}
+
+__global__ void cuLinearDropout(FloatType *v, const int *ids, int dropoutCount, int dim, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len && ids[index % dim] < dropoutCount) {
+        v[index] = 0;
+    }
+}
+
+void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = ((dim * batchSize) + threadsPerBlock - 1) / threadsPerBlock;
+    cuLinearDropout<<<blocks, threadsPerBlock>>>(v, ids, dropoutCount, dim, dim * batchSize);
+}
+
+__global__ void cuAverageVTo(FloatType *r, const FloatType *v, int dim, int count)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        FloatType sum = 0;
+        for (int i = 0; i < count; ++i) {
+            sum += v[i * dim + index];
+        }
+        r[index] = sum / count;
+    }
+}
+
+void averageVTo(FloatType *r, const FloatType *v, int dim, int count)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuAverageVTo<<<blocks, threadsPerBlock>>>(r, v, dim, count);
+}
+
+__global__ void cuGetMNISTData(
+        FloatType *data,
+        const unsigned char *dataBuffer,
+        const int *indices, int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int i = indices[index / (28 * 28)];
+        data[index] = static_cast<FloatType>(dataBuffer[i * 28 * 28 + index % (28 * 28)]) / 0xff;
+    }
+}
+
+__global__ void cuGetMNISTLabel(
+        FloatType *label,
+        const unsigned char *labelBuffer,
+        const int *indices, int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int i = indices[index / 10];
+        label[index] = labelBuffer[i] == (index % 10) ? 1 : 0;
+    }
+}
+
+void getMNISTBatch(FloatType *data, FloatType *labels,
+                   const unsigned char *dataBuffer, const unsigned char *labelBuffer,
+                   const int *indices, int count
+)
+{
+    int threadsPerBlocks = DEF_THREADS_PER_BLOCK;
+    int len = 28 * 28 * count;
+    int blocks = (len + threadsPerBlocks - 1) / threadsPerBlocks;
+    cuGetMNISTData<<<blocks, threadsPerBlocks>>>(data, dataBuffer, indices, len);
+
+    if (labels) {
+        len = 10 * count;
+        blocks = (len + threadsPerBlocks - 1) / threadsPerBlocks;
+        cuGetMNISTLabel<<<blocks, threadsPerBlocks>>>(labels, labelBuffer, indices, len);
+    }
+}
+
+__global__ void cuConv(
+        const FloatType *input, int inputWidth, int inputHeight, int inputSize, int channelCount,
+        const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelSize, int kernelCount,
+        FloatType *output, int outputWidth, int outputSize,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int totalLen, int inputJump, int kernelJump
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < totalLen) {
+        int outputLayer = index / outputSize;
+        int kernelId = outputLayer % kernelCount;
+        int batchId = outputLayer / kernelCount;
+        int indexInOutput = index % outputSize;
+        int y = indexInOutput / outputWidth;
+        int x = indexInOutput % outputWidth;
+        int inputY = y * yStride - yPadding;
+        int inputX = x * xStride - xPadding;
+        int kernelY = CU_MAX(-inputY, 0);
+        int kernelX = CU_MAX(-inputX, 0);
+        int yLim = CU_MIN(kernelHeight, inputHeight - inputY);
+        int xLim = CU_MIN(kernelWidth, inputWidth - inputX);
+        FloatType sum = 0;
+        const FloatType *mInput = input + batchId * inputJump;
+        const FloatType *mKernel = kernel + kernelId * kernelJump;
+        for (int i = 0; i < channelCount; ++i) {
+            for (int j = kernelY; j < yLim; ++j) {
+                for (int k = kernelX; k < xLim; ++k) {
+                    sum += mKernel[j * kernelWidth + k] * mInput[(inputY + j) * inputWidth + inputX + k];
+                }
+            }
+            mInput += inputSize;
+            mKernel += kernelSize;
+        }
+        output[index] = sum;
+    }
+}
+
+void conv(
+        const FloatType *in, int inputWidth, int inputHeight, int channelCount,
+        FloatType *out, int outputWidth, int outputHeight,
+        const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelCount,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int batchSize
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int outputSize = outputWidth * outputHeight;
+    int len = outputSize * kernelCount * batchSize;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    int inputSize = inputWidth * inputHeight;
+    int kernelSize = kernelWidth * kernelHeight;
+    cuConv<<<blocks, threadsPerBlock>>>(
+            in, inputWidth, inputHeight, inputSize, channelCount,
+            kernel, kernelWidth, kernelHeight, kernelSize, kernelCount,
+            out, outputWidth, outputSize,
+            xStride, yStride, xPadding, yPadding,
+            len, inputSize * channelCount, kernelSize * channelCount
+    );
+}
+
+__global__ void cuConvBP(
+        const FloatType *in, int inputWidth, int inputSize,
+        const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelSize, int kernelCount, int kernelJump,
+        FloatType *out, int outputWidth, int outputHeight, int outputSize, int channelCount,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int totalLen
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < totalLen) {
+        int outputId = index / outputSize;
+        int batchId = outputId / channelCount;
+        int kernelLayer = outputId % channelCount;
+        int indexInOutput = index % outputSize;
+        int outputY = indexInOutput / outputWidth;
+        int outputX = indexInOutput % outputWidth;
+        FloatType sum = 0;
+        int iy = (outputY < kernelHeight - yPadding) ? 0 : ((outputY + yPadding - kernelHeight) / yStride + 1);
+        int ix = (outputX < kernelWidth - xPadding) ? 0 : ((outputX + xPadding - kernelWidth) / xStride + 1);
+        int yBegin = iy * yStride - yPadding;
+        int xBegin = ix * xStride - xPadding;
+        int yLim = CU_MIN(outputY, outputHeight + yPadding - kernelHeight);
+        int xLim = CU_MIN(outputX, outputWidth + xPadding - kernelWidth);
+        for (int i = 0; i < kernelCount; ++i) {
+            const FloatType *mKernel = kernel + kernelLayer * kernelSize + i * kernelJump;
+            const FloatType *mInput = in + batchId * inputSize * kernelCount + inputSize * i;
+            int inY = iy;
+            for (int j = yBegin; j <= yLim; j += yStride, ++inY) {
+                int kernelY = outputY - j;
+                int inX = ix;
+                for (int k = xBegin; k <= xLim; k += xStride, ++inX) {
+                    int kernelX = outputX - k;
+                    sum += mKernel[kernelY * kernelWidth + kernelX] * mInput[inY * inputWidth + inX];
+                }
+            }
+        }
+        out[index] = sum;
+    }
+}
+
+void convBP(const FloatType *in, int inputWidth, int inputHeight,
+            FloatType *out, int outputWidth, int outputHeight, int channelCount,
+            const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelCount,
+            int xStride, int yStride, int xPadding, int yPadding,
+            int batchSize
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int kernelSize = kernelWidth * kernelHeight;
+    int kernelJump = kernelSize * channelCount;
+    int outputSize = outputWidth * outputHeight;
+    int totalLen = outputSize * channelCount * batchSize;
+    int blocks = (totalLen + threadsPerBlock - 1) / threadsPerBlock;
+    cuConvBP<<<blocks, threadsPerBlock>>> (in, inputWidth, inputWidth * inputHeight,
+            kernel, kernelWidth, kernelHeight, kernelSize, kernelCount, kernelJump,
+            out, outputWidth, outputHeight, outputSize, channelCount,
+            xStride, yStride, xPadding, yPadding,
+            totalLen
+    );
+}
+
+__global__ void cuConvKernelGrad(
+        const FloatType *input, int inputWidth, int inputHeight, int inputSize, int inputJump, int channelCount,
+        const FloatType *delta, int deltaWidth, int deltaHeight, int deltaSize, int deltaJump,
+        FloatType *kernel, int kernelWidth, int kernelSize,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int len, int batchSize
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int kernelLayerId = index / kernelSize;
+        int indexInKernel = index % kernelSize;
+        int kernelId = kernelLayerId / channelCount;
+        int channelId = kernelLayerId % channelCount;
+        int y = indexInKernel / kernelWidth;
+        int x = indexInKernel % kernelWidth;
+        int inputY = y * yStride - yPadding;
+        int inputX = x * xStride - xPadding;
+        int deltaY = CU_MAX(-inputY, 0);
+        int deltaX = CU_MAX(-inputX, 0);
+        int yLim = CU_MIN(deltaHeight, inputHeight - inputY);
+        int xLim = CU_MIN(deltaWidth, inputWidth - inputX);
+        FloatType sum = 0;
+        for (int i = 0; i < batchSize; ++i) {
+            const FloatType *mDelta = delta + kernelId * deltaSize + i * deltaJump;
+            const FloatType *mInput = input + channelId * inputSize + i * inputJump;
+            for (int j = deltaY; j < yLim; ++j) {
+                for (int k = deltaX; k < xLim; ++k) {
+                    sum += mDelta[j * deltaWidth + k] * mInput[(inputY + j) * inputWidth + inputX + k];
+                }
+            }
+        }
+        kernel[index] = sum / batchSize;
+    }
+}
+
+__global__ void cuConvBiasGrad(
+        FloatType *biases,
+        const FloatType *delta, int deltaSize, int deltaJump,
+        int len, int batchSize
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        FloatType sum = 0;
+        const FloatType *mDelta = delta + index * deltaSize;
+        for (int i = 0; i < batchSize; ++i) {
+            for (int j = 0; j < deltaSize; ++j) {
+                sum += mDelta[j];
+            }
+            mDelta += deltaJump;
+        }
+        biases[index] = sum / batchSize;
+    }
+}
+
+void convGradients(
+        FloatType *kernel, int kernelWidth, int kernelHeight,
+        FloatType *biases, int kernelCount,
+        const FloatType *delta, int outputWidth, int outputHeight,
+        const FloatType *input, int inputWidth, int inputHeight, int channelCount,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int batchSize
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int kernelSize = kernelWidth * kernelHeight;
+    int len = kernelSize * channelCount * kernelCount;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    int inputSize = inputWidth * inputHeight;
+    int deltaSize = outputWidth * outputHeight;
+    int deltaJump = deltaSize * kernelCount;
+    cuConvKernelGrad<<<blocks, threadsPerBlock>>>(
+            input, inputWidth, inputHeight, inputSize, inputSize * channelCount, channelCount,
+            delta, outputWidth, outputHeight, deltaSize, deltaJump,
+            kernel, kernelWidth, kernelSize,
+            xStride, yStride, xPadding, yPadding,
+            len, batchSize
+    );
+
+    if (biases) {
+        int t = std::min((kernelCount + 31) / 32 * 32, DEF_THREADS_PER_BLOCK);
+        blocks = (kernelCount + t - 1) / t;
+        cuConvBiasGrad<<<blocks, t>>>(biases, delta, deltaSize, deltaJump, kernelCount, batchSize);
+    }
+}
+
+__global__ void cuMeanPooling(
+        const FloatType *in, int inputWidth, int inputSize,
+        FloatType *out, int outputWidth, int outputSize,
+        int windowWidth, int windowHeight, int windowSize, int xStride, int yStride,
+        int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int channelId = index / outputSize;
+        const FloatType *mInput = in + channelId * inputSize;
+        int indexInChannel = index % outputSize;
+        int y = indexInChannel / outputWidth;
+        int x = indexInChannel % outputWidth;
+        FloatType sum = 0;
+        for (int i = y * yStride, yLim = i + windowHeight; i < yLim; ++i) {
+            for (int j = x * xStride, xLim = j + windowWidth; j < xLim; ++j) {
+                sum += mInput[i * inputWidth + j];
+            }
+        }
+        out[index] = sum / windowSize;
+    }
+}
+
+void meanPooling(const FloatType *in, int inputWidth, int inputHeight,
+                 FloatType *out, int outputWidth, int outputHeight,
+                 int windowWidth, int windowHeight,
+                 int xStride, int yStride,
+                 int channelCount
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int len = outputWidth * outputHeight * channelCount;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuMeanPooling<<<blocks, threadsPerBlock>>>(
+            in, inputWidth, inputWidth * inputHeight,
+                    out, outputWidth, outputWidth * outputHeight,
+                    windowWidth, windowHeight, windowWidth * windowHeight, xStride, yStride, len
+    );
+}
+
+__global__ void cuMeanPoolingBP(
+        const FloatType *in, int inputWidth, int inputSize,
+        FloatType *out, int outputWidth, int outputHeight, int outputSize,
+        int windowWidth, int windowHeight, int windowSize, int xStride, int yStride,
+        int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int channelId = index / outputSize;
+        const FloatType *mInput = in + channelId * inputSize;
+        int indexInChannel = index % outputSize;
+        int y = indexInChannel / outputWidth;
+        int x = indexInChannel % outputWidth;
+        int iy = y < windowHeight ? 0 : ((y - windowHeight) / yStride + 1);
+        int ix = x < windowWidth ? 0 : ((x - windowWidth) / xStride + 1);
+        int yBegin = iy * yStride;
+        int xBegin = ix * xStride;
+        int yLim = CU_MIN(y, outputHeight - windowHeight);
+        int xLim = CU_MIN(x, outputWidth - windowWidth);
+        int inY = iy;
+        FloatType sum = 0;
+        for (int i = yBegin; i <= yLim; i += yStride, ++inY) {
+            int inX = ix;
+            for (int j = xBegin; j <= xLim; j += xStride, ++inX) {
+                sum += mInput[inY * inputWidth + inX];
+            }
+        }
+        out[index] = sum / windowSize;
+    }
+}
+
+void meanPoolingBP(const FloatType *in, int inputWidth, int inputHeight,
+                   FloatType *out, int outputWidth, int outputHeight,
+                   int windowWidth, int windowHeight,
+                   int xStride, int yStride,
+                   int channelCount
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int len = outputWidth * outputHeight * channelCount;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuMeanPoolingBP<<<blocks, threadsPerBlock>>>(
+            in, inputWidth, inputWidth * inputHeight,
+            out, outputWidth, outputHeight, outputWidth * outputHeight,
+            windowWidth, windowHeight, windowWidth * windowHeight,
+            xStride, yStride, len
+    );
+}
+
+__global__ void cuMaxPooling(
+        const FloatType *in, int inputWidth, int inputSize,
+        FloatType *out, int outputWidth, int outputSize,
+        int *xOffset, int *yOffset,
+        int windowWidth, int windowHeight, int xStride, int yStride,
+        int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int channelId = index / outputSize;
+        const FloatType *mInput = in + channelId * inputSize;
+        int indexInChannel = index % outputSize;
+        int y = indexInChannel / outputWidth;
+        int x = indexInChannel % outputWidth;
+        FloatType max = 0;
+        int xo = -1;
+        int yo = -1;
+        for (int i = y * yStride, yLim = i + windowHeight; i < yLim; ++i) {
+            for (int j = x * xStride, xLim = j + windowWidth; j < xLim; ++j) {
+                FloatType c = mInput[i * inputWidth + j];
+                if (xo < 0 || c > max) {
+                    max = c;
+                    yo = windowHeight + i - yLim;
+                    xo = windowWidth + j - xLim;
+                }
+            }
+        }
+        out[index] = max;
+        xOffset[index] = xo;
+        yOffset[index] = yo;
+    }
+}
+
+__global__ void cuMaxPoolingWithoutOffset(
+        const FloatType *in, int inputWidth, int inputSize,
+        FloatType *out, int outputWidth, int outputSize,
+        int windowWidth, int windowHeight, int xStride, int yStride,
+        int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int channelId = index / outputSize;
+        const FloatType *mInput = in + channelId * inputSize;
+        int indexInChannel = index % outputSize;
+        int y = indexInChannel / outputWidth;
+        int x = indexInChannel % outputWidth;
+        FloatType max = 0;
+        int b = 0;
+        for (int i = y * yStride, yLim = i + windowHeight; i < yLim; ++i) {
+            for (int j = x * xStride, xLim = j + windowWidth; j < xLim; ++j) {
+                FloatType c = mInput[i * inputWidth + j];
+                if (b == 0 || c > max) {
+                    max = c;
+                    b = 1;
+                }
+            }
+        }
+        out[index] = max;
+    }
+}
+
+void maxPooling(const FloatType *in, int inputWidth, int inputHeight,
+                FloatType *out, int outputWidth, int outputHeight,
+                int *xOffset, int *yOffset,
+                int windowWidth, int windowHeight,
+                int xStride, int yStride,
+                int channelCount
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int len = outputWidth * outputHeight * channelCount;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    if (xOffset) {
+        cuMaxPooling<<<blocks, threadsPerBlock>>>(
+                in, inputWidth, inputWidth * inputHeight,
+                        out, outputWidth, outputWidth * outputHeight,
+                        xOffset, yOffset, windowWidth, windowHeight,
+                        xStride, yStride, len
+        );
+    } else {
+        cuMaxPoolingWithoutOffset<<<blocks, threadsPerBlock>>>(
+                in, inputWidth, inputWidth * inputHeight,
+                        out, outputWidth, outputWidth * outputHeight,
+                        windowWidth, windowHeight,
+                        xStride, yStride, len
+        );
+    }
+}
+
+__global__ void cuMaxPoolingBP(
+        const FloatType *in, int inputWidth, int inputSize,
+        FloatType *out, int outputWidth, int outputHeight, int outputSize,
+        const int *xOffset, const int *yOffset,
+        int windowWidth, int windowHeight, int xStride, int yStride,
+        int len
+)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int channelId = index / outputSize;
+        const FloatType *mInput = in + channelId * inputSize;
+        const int *mXOffset = xOffset + channelId * inputSize;
+        const int *mYOffset = yOffset + channelId * inputSize;
+        int indexInChannel = index % outputSize;
+        int y = indexInChannel / outputWidth;
+        int x = indexInChannel % outputWidth;
+        int iy = y < windowHeight ? 0 : ((y - windowHeight) / yStride + 1);
+        int ix = x < windowWidth ? 0 : ((x - windowWidth) / xStride + 1);
+        int yBegin = iy * yStride;
+        int xBegin = ix * xStride;
+        int yLim = CU_MIN(y, outputHeight - windowHeight);
+        int xLim = CU_MIN(x, outputWidth - windowWidth);
+        int inY = iy;
+        FloatType sum = 0;
+        for (int i = yBegin; i <= yLim; i += yStride, ++inY) {
+            int inX = ix;
+            int cy = y - i;
+            for (int j = xBegin; j <= xLim; j += xStride, ++inX) {
+                int cx = x - j;
+                if (mYOffset[inY * inputWidth + inX] == cy && mXOffset[inY * inputWidth + inX] == cx)
+                    sum += mInput[inY * inputWidth + inX];
+            }
+        }
+        out[index] = sum;
+    }
+}
+
+void maxPoolingBP(const FloatType *in, int inputWidth, int inputHeight,
+                  FloatType *out, int outputWidth, int outputHeight,
+                  const int *xOffset, const int *yOffset,
+                  int windowWidth, int windowHeight,
+                  int xStride, int yStride,
+                  int channelCount
+)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int len = outputWidth * outputHeight * channelCount;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuMaxPoolingBP<<<blocks, threadsPerBlock>>>(
+            in, inputWidth, inputWidth * inputHeight,
+                    out, outputWidth, outputHeight, outputWidth * outputHeight,
+                    xOffset, yOffset, windowWidth, windowHeight,
+                    xStride, yStride, len
+    );
+}
+
+__global__ void cuGetCIFAR10Data(FloatType *data, const unsigned char *buffer, const int *indices, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int i = indices[index / (32 * 32 * 3)];
+        data[index] = static_cast<FloatType>(buffer[i * 3073 + 1 + index % (32 * 32 * 3)]) / 0xff;
+    }
+}
+
+__global__ void cuGetCIFAR10Label(FloatType *label, const unsigned char *buffer, const int *indices, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        int i = indices[index / 10];
+        label[index] = buffer[i * 3073] == (index % 10) ? 1 : 0;
+    }
+}
+
+void getCIFAR10Batch(FloatType *data, FloatType *labels,
+                     const unsigned char *buffer,
+                     const int *indices, int count
+)
+{
+    int threadsPerBlocks = DEF_THREADS_PER_BLOCK;
+    int len = 32 * 32 * 3 * count;
+    int blocks = (len + threadsPerBlocks - 1) / threadsPerBlocks;
+    cuGetCIFAR10Data<<<blocks, threadsPerBlocks>>>(data, buffer, indices, len);
+
+    if (labels) {
+        len = 10 * count;
+        blocks = (len + threadsPerBlocks - 1) / threadsPerBlocks;
+        cuGetCIFAR10Label<<<blocks, threadsPerBlocks>>>(labels, buffer, indices, len);
+    }
+}
+
+__global__ void cuFillN(FloatType *arr, int len, FloatType v)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        arr[index] = v;
+    }
+}
+
+void m_fill_n(FloatType *arr, int len, FloatType v)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuFillN<<<blocks, threadsPerBlock>>>(arr, len, v);
+}
+
+__global__ void cuIncArray(int *arr, int len, int bias)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        arr[index] = index + bias;
+    }
+}
+
+__global__ void cuShuffle(int *arr, int len, unsigned long seed)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index == 0) {
+        curandState state;
+        curand_init(seed, static_cast<unsigned long long int>(threadIdx.x), 0, &state);
+        for (int i = len - 1; i > 0; --i) {
+            auto d = static_cast<int>(curand_uniform(&state) * (i - 1));
+            int tmp = arr[d];
+            arr[d] = arr[i];
+            arr[i] = tmp;
+        }
+    }
+}
+
+void randomPermutation(int *arr, int len, int bias)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuIncArray<<<blocks, threadsPerBlock>>>(arr, len, bias);
+    cuShuffle<<<1, 8>>>(arr, len, static_cast<unsigned long>(clock()));
+}
+
+void incArray(int *arr, int len, int bias)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (len + threadsPerBlock - 1) / threadsPerBlock;
+    cuIncArray<<<blocks, threadsPerBlock>>>(arr, len, bias);
+}
+
+//以下尚未测试
+
+__global__ void cuMultiplyNVTo(FloatType *r, FloatType n, const FloatType *v, int dim)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        r[index] = n * v[index];
+    }
+}
+
+void multiplyNVTo(FloatType *r, FloatType n, const FloatType *v, int dim)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuMultiplyNVTo<<<blocks, threadsPerBlock>>>(r, n, v, dim);
+}
+
+__global__ void cuBatchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, const FloatType *oneDivDev, int dim, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        out[index] = (x[index] - avg[index % dim]) * oneDivDev[index % dim];
+    }
+}
+
+void batchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, const FloatType *oneDivDev, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = ((dim * batchSize) + threadsPerBlock - 1) / threadsPerBlock;
+    cuBatchNormalize<<<blocks, threadsPerBlock>>>(out, x, avg, oneDivDev, dim, dim * batchSize);
+}
+
+__global__ void cuBnTransform(FloatType *out, const FloatType *normOut, const FloatType *gamma, const FloatType *beta, int dim, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        out[index] = normOut[index] * gamma[index % dim] + beta[index % dim];
+    }
+}
+
+void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *gamma, const FloatType *beta, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = ((dim * batchSize) + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnTransform<<<blocks, threadsPerBlock>>>(out, normOut, gamma, beta, dim, dim * batchSize);
+}
+
+__global__ void cuBnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        out[index] = x[index] - avg[index % dim];
+    }
+}
+
+void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = ((dim * batchSize) + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnXSubAvg<<<blocks, threadsPerBlock>>>(out, x, avg, dim, dim * batchSize);
+}
+
+__global__ void cuBnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        FloatType sum = 0;
+        for (int i = 0; i < batchSize; ++i) {
+            sum += xSubAvg[i * dim + index] * xSubAvg[i * dim + index];
+        }
+        out[index] = sum / batchSize;
+    }
+}
+
+void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnVariance<<<blocks, threadsPerBlock>>>(out, xSubAvg, dim, batchSize);
+}
+
+__global__ void cuBnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        FloatType sum = 0;
+        for (int i = 0; i < batchSize; ++i) {
+            sum += delta[i * dim + index] * xSubAvg[i * dim + index];
+        }
+        out[index] = sum;
+    }
+}
+
+void bnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnDeltaMulCenter<<<blocks, threadsPerBlock>>>(out, delta, xSubAvg, dim, batchSize);
+}
+
+__global__ void cuBnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDelta, const FloatType *normOut, const FloatType *var, const FloatType * deltaMulCenter, int dim, int batchSize, int len)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < len) {
+        out[index] = gamma[index % dim] * (normDelta[index] - normOut[index] * deltaMulCenter[index % dim] / ((var[index % dim] + static_cast<FloatType>(1e-4)) * batchSize));
+    }
+}
+
+void bnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDelta, const FloatType *normOut, const FloatType *var, const FloatType *deltaMulCenter, int dim, int batchSize)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = ((dim * batchSize) + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnBackProp<<<blocks, threadsPerBlock>>>(out, gamma, normDelta, normOut, var, deltaMulCenter, dim, batchSize, dim * batchSize);
+}
+
+__global__ void cuBnGammaGradients(FloatType *gamma, const FloatType *delta, const FloatType *normOut, int dim, int batchSize)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        FloatType sum = 0;
+        for (int i = 0; i < batchSize; ++i) {
+            sum += delta[i * dim + index] * normOut[i * dim + index];
+        }
+        gamma[index] = sum;
+    }
+}
+
+__global__ void cuBnBetaGradients(FloatType *beta, const FloatType *delta, int dim, int batchSize)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        FloatType sum = 0;
+        for (int i = 0; i < batchSize; ++i) {
+            sum += delta[i * dim + index];
+        }
+        beta[index] = sum;
+    }
+}
+
+void bnGradients(FloatType *gamma, FloatType *beta, const FloatType *delta, const FloatType *normOut, int dim, int batchSize)
+{
+    int threadsPerBlock = std::min((dim + 31) / 32 * 32, DEF_THREADS_PER_BLOCK);
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnGammaGradients<<<blocks, threadsPerBlock>>>(gamma, delta, normOut, dim, batchSize);
+    cuBnBetaGradients<<<blocks, threadsPerBlock>>>(beta, delta, dim, batchSize);
+}
+
+__global__ void cuBnGlobalAvg(FloatType *globalAvg, const FloatType *avg, int dim)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        globalAvg[index] = globalAvg[index] * static_cast<FloatType>(0.9) + avg[index] * static_cast<FloatType>(0.1);
+    }
+}
+
+__global__ void cuBnGlobalVar(FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *var, int dim)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < dim) {
+        globalVar[index] = globalVar[index] * static_cast<FloatType>(0.9) + var[index] * static_cast<FloatType>(0.1);
+        globalOneDivDev[index] = static_cast<FloatType>(1) / std::sqrt(globalVar[index] + static_cast<FloatType>(1e-4));
+    }
+}
+
+void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *avg, const FloatType *var, int dim)
+{
+    int threadsPerBlock = DEF_THREADS_PER_BLOCK;
+    int blocks = (dim + threadsPerBlock - 1) / threadsPerBlock;
+    cuBnGlobalAvg<<<blocks, threadsPerBlock>>>(globalAvg, avg, dim);
+    cuBnGlobalVar<<<blocks, threadsPerBlock>>>(globalVar, globalOneDivDev, var, dim);
+}
+
+//template<typename T>
+//void printM(const T *m, int r, int c)
+//{
+//    for (int i = 0; i < r; ++i) {
+//        for (int j = 0; j < c; ++j) {
+//            std::cout << m[i * c + j] << ' ';
+//        }
+//        std::cout << std::endl;
+//    }
+//    std::cout << std::endl;
+//}
+//
+//void testAutoEncoder()
+//{
+//    AutoEncoder autoEncoder;
+//
+//    int trainSetSize = 50000;
+//
+//    ConvLayer encoder(28, 28, 1, 3, 3, 6);
+//    autoEncoder.addLayer(&encoder);
+//
+//    LReLULayer lReLULayer(encoder.getOutputDim(), 0.01);
+//    autoEncoder.addLayer(&lReLULayer);
+//
+//    ConvLayer decoder(encoder.getOutputWidth(), encoder.getOutputHeight(), 6, 3, 3, 1, 1, 1, 2, 2);
+//    autoEncoder.addLayer(&decoder);
+//
+//    SigmoidOutputLayer output(decoder.getOutputDim());
+//    autoEncoder.addLayer(&output);
+//
+//    autoEncoder.buildUpAutoEncoder(100);
+//
+//    AdamOptimizer optimizer1;
+//    encoder.setOptimizer(&optimizer1);
+//    AdamOptimizer optimizer2;
+//    decoder.setOptimizer(&optimizer2);
+//
+//    MNISTDataSet trainSet("/home/wjy50/mnist/train-images.idx3-ubyte", "/home/wjy50/mnist/train-labels.idx1-ubyte");
+//    MNISTDataSet testSet("/home/wjy50/mnist/t10k-images.idx3-ubyte", "/home/wjy50/mnist/t10k-labels.idx1-ubyte");
+//
+//    FloatType *in = allocArray<FloatType>(28 * 28);
+//    FloatType out[28 * 28];
+//    for (int k = 201; k < 10000; ++k) {
+//        long st = clock();
+//        autoEncoder.optimize(trainSet, trainSetSize);
+//        long t = clock() - st;
+//        std::cout << "epoch" << k+1 << ':' << std::endl;
+//        int j = 50000 + k;
+//        trainSet.getBatch(in, nullptr, &j, 1);
+//        const FloatType *o = autoEncoder.feedForward(in);
+//        cudaMemcpy(out, o, 28 * 28 * sizeof(FloatType), cudaMemcpyDeviceToHost);
+//        for (int i = 0; i < 28; ++i) {
+//            for (int l = 0; l < 28; ++l) {
+//                auto r = static_cast<int>(out[i * 28 + l] * 9);
+//                if (r > 0) std::cout << r << ' ';
+//                else std::cout << "  ";
+//            }
+//            /*std::cout << "    ";
+//            for (int l = 0; l < 28; ++l) {
+//                auto r = static_cast<int>(in[i * 28 + l] * 9);
+//                if (r > 0) std::cout << r << ' ';
+//                else std::cout << "  ";
+//            }*/
+//            std::cout << std::endl;
+//        }
+//        /*if (k % 10 == 0) {
+//            MNISTData2Bmp data2Bmp("/home/wjy50/mnist1.bmp");
+//            data2Bmp.writeData(in);
+//            data2Bmp.close();
+//            MNISTData2Bmp data2BmpG("/home/wjy50/mnistG1.bmp");
+//            data2BmpG.writeData(o);
+//            data2BmpG.close();
+//        }*/
+//        std::cout << t << std::endl;
+//    }
+//    freeArray(in);
+//}
+//
+//int main()
+//{
+//    std::cout << "hello" << std::endl;
+//
+//    initializeCUDA();
+//
+//    //testAutoEncoder();
+//
+//    std::unique_ptr<FloatType[]> input = make_unique_array<FloatType[]>(32 * 32 * 10);
+//    std::unique_ptr<FloatType[]> output = make_unique_array<FloatType[]>(16 * 16 * 10);
+//    std::unique_ptr<FloatType[]> inputFromDevice = make_unique_array<FloatType[]>(32 * 32 * 10);
+//
+//    std::unique_ptr<int[]> xOffset = make_unique_array<int[]>(16 * 16 * 10);
+//    std::unique_ptr<int[]> yOffset = make_unique_array<int[]>(16 * 16 * 10);
+//
+//    std::random_device rd;
+//    std::uniform_real_distribution<FloatType> distribution(0, 1);
+//
+//    for (int i = 0; i < 16 * 16 * 10; ++i) {
+//        output[i] = distribution(rd);
+//    }
+//
+//    std::uniform_int_distribution<int> distribution1(0, 1);
+//    for (int i = 0; i < 16 * 16 * 10; ++i) {
+//        xOffset[i] = distribution1(rd);
+//        yOffset[i] = distribution1(rd);
+//        std::cout << xOffset[i] << ' ';
+//    }
+//    std::cout << std::endl;
+//
+//    FloatType *d_input, *d_output;
+//    d_input = allocArray<FloatType>(32 * 32 * 10);
+//    d_output = allocArray<FloatType>(16 * 16 * 10);
+//
+//    int *d_xOffset, *d_yOffset;
+//    d_xOffset = allocArray<int>(16 * 16 * 10);
+//    d_yOffset = allocArray<int>(16 * 16 * 10);
+//
+//    cudaMemcpy(d_output, output.get(), 16 * 16 * 10 * sizeof(FloatType), cudaMemcpyHostToDevice);
+//    cudaMemcpy(d_xOffset, xOffset.get(), 16 * 16 * 10 * sizeof(int), cudaMemcpyHostToDevice);
+//    cudaMemcpy(d_yOffset, yOffset.get(), 16 * 16 * 10 * sizeof(int), cudaMemcpyHostToDevice);
+//
+//    long st = clock();
+//
+//    maxPoolingBP(d_output, 16, 16, d_input, 32, 32, d_xOffset, d_yOffset, 2, 2, 2, 2, 10);
+//
+//    long t1 = clock() - st;
+//
+//    cudaMemcpy(inputFromDevice.get(), d_input, 32 * 32 * 10 * sizeof(FloatType), cudaMemcpyDeviceToHost);
+//
+//    st = clock();
+//
+//    maxPoolingBPCPU(output.get(), 16, 16, input.get(), 32, 32, xOffset.get(), yOffset.get(), 2, 2, 2, 2, 10);
+//
+//    long t2 = clock() - st;
+//
+//    printM(input.get(), 32, 32);
+//
+//    printM(inputFromDevice.get(), 32, 32);
+//
+//    for (int i = 0; i < 32 * 32 * 10; ++i) {
+//        if (std::fabs(input[i] - inputFromDevice[i]) > 1e-5) std::cout << input[i] - inputFromDevice[i] << ' ';
+//    }
+//    std::cout << std::endl;
+//
+//    std::cout << t1 << std::endl;
+//    std::cout << t2 << std::endl;
+//
+//    freeArray(d_input);
+//    freeArray(d_output);
+//
+//    destroyCUDA();
+//}
 
 #endif //ENABLE_CUDA

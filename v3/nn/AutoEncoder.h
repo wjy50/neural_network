@@ -19,6 +19,9 @@ private:
 
     FloatType *inputs;
 
+    int *indices;
+    int indexCap;
+
     int miniBatchSize;
 public:
     AutoEncoder();
@@ -30,6 +33,8 @@ public:
     const FloatType *feedForward(const FloatType *x);
 
     void optimize(DataSetBase &trainSet, int altTrainSetSize = 0);
+
+    void ensureIndexCap(int size);
 
     ~AutoEncoder();
 };

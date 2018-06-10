@@ -25,14 +25,16 @@ class MNISTDataSet : public DataSetBase
 private:
     int count;
 
-    std::unique_ptr<unsigned char[]> buffer;
-    std::unique_ptr<unsigned char[]> labelBuffer;
+    unsigned char *buffer;
+    unsigned char *labelBuffer;
 public:
     MNISTDataSet(const char *imagePath, const char *labelPath);
 
     int getCount() override;
 
     void getBatch(FloatType *data, FloatType *labels, const int *indices, int count) override;
+
+    ~MNISTDataSet();
 };
 
 

@@ -3,7 +3,6 @@
  */
 
 #include <cmath>
-#include <algorithm>
 #include "BatchNormLayer.h"
 #include "../../interface/interface.h"
 
@@ -16,7 +15,7 @@ BatchNormLayer::BatchNormLayer(int dim) : LayerBase(dim, dim)
     normDelta = nullptr;
     allocParamsAndGradients(2 * dim);
     gamma = params;
-    std::fill_n(gamma, dim, 1);
+    m_fill_n(gamma, dim, 1);
     beta = params + dim;
     gammaGradient = gradients;
     betaGradient = gradients + dim;
@@ -30,8 +29,6 @@ BatchNormLayer::BatchNormLayer(int dim) : LayerBase(dim, dim)
     clearArray<FloatType>(globalAvg, dim);
     clearArray<FloatType>(globalVar, dim);
     clearArray<FloatType>(globalOneDivDev, dim);
-
-    miniBatchCount = 0;
 }
 
 const FloatType* BatchNormLayer::feedForward(const FloatType *x)
@@ -49,7 +46,7 @@ const FloatType* BatchNormLayer::feedForwardForOptimization(const FloatType *x)
     bnOneDivDev(oneDivDev, var, outputDim);
     batchNormalize(normOut, x, avg, oneDivDev, outputDim, miniBatchSize);
     bnTransform(output, normOut, gamma, beta, outputDim, miniBatchSize);
-    bnGlobalValues(globalAvg, globalVar, globalOneDivDev, avg, var, outputDim, miniBatchSize, ++miniBatchCount);
+    bnGlobalValues(globalAvg, globalVar, globalOneDivDev, avg, var, outputDim);
     return output;
 }
 

@@ -9,17 +9,24 @@
 CIFAR10DataSet::CIFAR10DataSet(const char **path, int n)
 {
     count = 10000 * n;
-    buffer = make_unique_array<unsigned char[]>(3073 * static_cast<size_t>(count));
+    auto *temp = new unsigned char[3073 * count];
     for (int i = 0; i < n; ++i) {
         std::ifstream file(path[i], std::ios::binary);
-        file.read(reinterpret_cast<char *>(buffer.get() + i * 3073 * 10000), 3073 * 10000);
+        file.read(reinterpret_cast<char *>(temp + i * 3073 * 10000), 3073 * 10000);
         file.close();
     }
+#if ENABLE_CUDA
+    buffer = allocArray<unsigned char>(3073 * count);
+    cudaMemcpy(buffer, temp, 3073 * count * sizeof(unsigned char), cudaMemcpyHostToDevice);
+    delete[] temp;
+#else
+    buffer = temp;
+#endif
 }
 
 void CIFAR10DataSet::getBatch(FloatType *data, FloatType *labels, const int *indices, int count)
 {
-    getCIFAR10Batch(data, labels, buffer.get(), indices, count);
+    getCIFAR10Batch(data, labels, buffer, indices, count);
 }
 
 int CIFAR10DataSet::getCount()
@@ -40,4 +47,9 @@ void CIFAR10Data2Bmp::writeData(const FloatType *data)
         }
     }
     stream.write(reinterpret_cast<const char *>(buffer.get()), w * h * 3);
+}
+
+CIFAR10DataSet::~CIFAR10DataSet()
+{
+    freeArray(buffer);
 }

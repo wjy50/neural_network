@@ -23,6 +23,8 @@ void invertEndian(void *p, int size)
 MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
 {
     ifstream stream(imagePath, ios::binary);
+    buffer = nullptr;
+    labelBuffer = nullptr;
     if (stream.good()) {
         unsigned int magic;
         stream.read(reinterpret_cast<char *>(&magic), sizeof(unsigned int));
@@ -30,8 +32,15 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
             stream.read(reinterpret_cast<char *>(&count), sizeof(int));
             invertEndian(&count, sizeof(int));
             stream.seekg(2 * sizeof(int), ios::cur);
-            buffer = make_unique_array<unsigned char[]>(static_cast<size_t>(count) * 28 * 28);
-            stream.read(reinterpret_cast<char *>(buffer.get()), count * 28 * 28);
+            auto *temp = new unsigned char[count * 28 * 28];
+            stream.read(reinterpret_cast<char *>(temp), count * 28 * 28);
+#if ENABLE_CUDA
+            buffer = allocArray<unsigned char>(count * 28 * 28);
+            cudaMemcpy(buffer, temp, count * 28 * 28 * sizeof(unsigned char), cudaMemcpyHostToDevice);
+            delete[] temp;
+#else
+            buffer = temp;
+#endif
         }
         stream.close();
     }
@@ -45,8 +54,15 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
             labelStream.read(reinterpret_cast<char *>(&labelCount), sizeof(int));
             invertEndian(&labelCount, sizeof(int));
             assert(count == labelCount);
-            labelBuffer = make_unique_array<unsigned char[]>(static_cast<size_t>(count));
-            labelStream.read(reinterpret_cast<char *>(labelBuffer.get()), count);
+            auto *temp = new unsigned char[count];
+            labelStream.read(reinterpret_cast<char *>(temp), count);
+#if ENABLE_CUDA
+            labelBuffer = allocArray<unsigned char>(count);
+            cudaMemcpy(labelBuffer, temp, count * sizeof(unsigned char), cudaMemcpyHostToDevice);
+            delete[] temp;
+#else
+            labelBuffer = temp;
+#endif
         }
         labelStream.close();
     }
@@ -54,7 +70,7 @@ MNISTDataSet::MNISTDataSet(const char *imagePath, const char *labelPath)
 
 void MNISTDataSet::getBatch(FloatType *data, FloatType *labels, const int *indices, int count)
 {
-    getMNISTBatch(data, labels, buffer.get(), labelBuffer.get(), indices, count);
+    getMNISTBatch(data, labels, buffer, labelBuffer, indices, count);
 }
 
 int MNISTDataSet::getCount()
@@ -86,4 +102,10 @@ void MNISTData2Bmp::writeData(const FloatType *data)
         }
     }
     stream.write(reinterpret_cast<const char *>(buffer.get()), w * h * 3);
+}
+
+MNISTDataSet::~MNISTDataSet()
+{
+    freeArray(buffer);
+    freeArray(labelBuffer);
 }

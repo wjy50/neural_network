@@ -20,6 +20,9 @@ private:
 
     FloatType *inputs, *labels;
 
+    int *indices;
+    int indexCap;
+
     int miniBatchSize;
 public:
     NeuralNetwork();
@@ -31,6 +34,8 @@ public:
     const FloatType *feedForward(const FloatType *x);
 
     void optimize(DataSetBase &trainSet, int altTrainSetSize = 0);
+
+    void ensureIndexCap(int size);
 
     ~NeuralNetwork();
 };

@@ -9,7 +9,7 @@
 DropoutLayer::DropoutLayer(int dim) : LayerBase(dim, dim)
 {
     dropoutCount = 0;
-    dropoutIds = new int[dim];
+    dropoutIds = allocArray<int>(dim);
 }
 
 const FloatType* DropoutLayer::feedForward(const FloatType *x)
@@ -20,7 +20,7 @@ const FloatType* DropoutLayer::feedForward(const FloatType *x)
 const FloatType* DropoutLayer::feedForwardForOptimization(const FloatType *x)
 {
     if (dropoutCount != 0) {
-        randomPermutation<int>(dropoutIds, outputDim);
+        randomPermutation(dropoutIds, outputDim);
         linearDropout(const_cast<FloatType *>(x), outputDim, dropoutIds, dropoutCount, miniBatchSize);
     }
     return x;
@@ -50,5 +50,5 @@ void DropoutLayer::computeGradients() {}
 
 DropoutLayer::~DropoutLayer()
 {
-    delete[] dropoutIds;
+    freeArray(dropoutIds);
 }
