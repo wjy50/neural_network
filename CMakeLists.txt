@@ -3,11 +3,13 @@ project(neural_network)
 
 set(ENABLE_CUDA 1)
 
+set(CMAKE_VERBOSE_MAKEFILE on)
+
 if(${ENABLE_CUDA})
 
     FIND_PACKAGE(CUDA REQUIRED)
 
-    SET(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++11")
+    SET(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=compute_50 -code=sm_50 -std=c++11 -O2 -Xptxas --allow-expensive-optimizations=true,-O2,-v")
 
     include_directories(/usr/local/cuda/include)
 
@@ -17,7 +19,11 @@ endif(${ENABLE_CUDA})
 
 set(CMAKE_CXX_STANDARD 11)
 
-ADD_DEFINITIONS(-O2)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx2")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2")
+
+ADD_DEFINITIONS(-O2 -Wall -Wextra)
 
 set(
         SRC_LIST
@@ -72,7 +78,10 @@ set(
         v3/nn/AutoEncoder.h
         v3/data/base/Data2Bmp.cpp
         v3/data/base/Data2Bmp.h
-        v3/utils/permutation.cpp)
+        v3/utils/permutation.cpp
+        v3/nn/layer/ResidualBlock.cpp
+        v3/nn/layer/ResidualBlock.h
+        v3/utils/debug.cpp v3/utils/debug.h)
 
 if(${ENABLE_CUDA})
 

@@ -3,11 +3,11 @@
  */
 
 #include <cassert>
-#include <iostream>
 #include "NeuralNetwork.h"
 #include "../interface/interface.h"
 #include "../utils/UniquePointerExt.h"
 #include "../utils/permutation.h"
+#include "../utils/debug.h"
 
 NeuralNetwork::NeuralNetwork()
 {
@@ -35,18 +35,21 @@ void NeuralNetwork::buildUpNetwork(int miniBatchSize)
     inputs = allocArray<FloatType>(layers[0]->getInputDim() * miniBatchSize);
     labels = allocArray<FloatType>(layers.back()->getOutputDim() * miniBatchSize);
     FloatType *od = nullptr;
+    int dim = layers[0]->getInputDim();
     for (LayerBase *layer : layers) {
+        assert(layer->getInputDim() == dim);
+        dim = layer->getOutputDim();
         layer->initialize(miniBatchSize);
         if (od) layer->setDeltaOutput(od);
         od = layer->getDelta();
     }
 }
 
-const FloatType* NeuralNetwork::feedForward(const FloatType *x)
+const FloatType* NeuralNetwork::feedForward(const FloatType *x, int count)
 {
     const FloatType *a = x;
     for (LayerBase *layer : layers) {
-        a = layer->feedForward(a);
+        a = layer->feedForward(a, count);
     }
     return a;
 }
@@ -64,21 +67,37 @@ void NeuralNetwork::optimize(DataSetBase &trainSet, int altTrainSetSize)
         for (LayerBase *layer : layers) {
             //long st = clock();
             in = layer->feedForwardForOptimization(in);
-            //std::cout << clock() - st << std::endl;
+            //nout() << clock() - st << endl;
         }
 
         auto layerCount = static_cast<int>(layers.size());
         in = labels;
         for (int i = layerCount - 1; i > 0; --i) {
+            //long st = clock();
             layers[i]->backPropagate(in);
             in = layers[i - 1]->getDelta();
+            //nout() << clock() - st << endl;
         }
+        if (layers[0]->needBackPropAtFirst()) layers[0]->backPropagate(in);
 
         for (LayerBase *layer : layers) {
+            //long st = clock();
             layer->updateParameters();
+            //nout() << clock() - st << endl;
         }
-        //std::cout << std::endl;
+        //nout() << t << endl;
+        //nout() << endl;
     }
+}
+
+FloatType* NeuralNetwork::getInputBuffer()
+{
+    return inputs;
+}
+
+FloatType* NeuralNetwork::getLabelBuffer()
+{
+    return labels;
 }
 
 void NeuralNetwork::ensureIndexCap(int size)

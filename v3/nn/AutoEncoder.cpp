@@ -39,11 +39,11 @@ void AutoEncoder::buildUpAutoEncoder(int miniBatchSize)
     }
 }
 
-const FloatType* AutoEncoder::feedForward(const FloatType *x)
+const FloatType* AutoEncoder::feedForward(const FloatType *x, int count)
 {
     const FloatType *a = x;
     for (LayerBase *layer : layers) {
-        a = layer->feedForward(a);
+        a = layer->feedForward(a, count);
     }
     return a;
 }
@@ -68,6 +68,7 @@ void AutoEncoder::optimize(DataSetBase &trainSet, int altTrainSetSize)
             layers[i]->backPropagate(in);
             in = layers[i - 1]->getDelta();
         }
+        if (layers[0]->needBackPropAtFirst()) layers[0]->backPropagate(in);
 
         for (LayerBase *layer : layers) {
             layer->updateParameters();

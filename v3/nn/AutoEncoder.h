@@ -30,7 +30,7 @@ public:
 
     void buildUpAutoEncoder(int miniBatchSize);
 
-    const FloatType *feedForward(const FloatType *x);
+    const FloatType *feedForward(const FloatType *x, int count = 1);
 
     void optimize(DataSetBase &trainSet, int altTrainSetSize = 0);
 
