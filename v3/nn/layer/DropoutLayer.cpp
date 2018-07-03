@@ -12,7 +12,7 @@ DropoutLayer::DropoutLayer(int dim) : LayerBase(dim, dim)
     dropoutIds = allocArray<int>(dim);
 }
 
-const FloatType* DropoutLayer::feedForward(const FloatType *x)
+const FloatType* DropoutLayer::feedForward(const FloatType *x, int count)
 {
     return x;
 }

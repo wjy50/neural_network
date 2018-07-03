@@ -34,9 +34,9 @@ MaxPoolingLayer::MaxPoolingLayer(
     delta = nullptr;
 }
 
-const FloatType* MaxPoolingLayer::feedForward(const FloatType *x)
+const FloatType* MaxPoolingLayer::feedForward(const FloatType *x, int count)
 {
-    maxPooling(x, inputWidth, inputHeight, output, outputWidth, outputHeight, nullptr, nullptr, windowWidth, windowHeight, xStride, yStride, inputChannel);
+    maxPooling(x, inputWidth, inputHeight, output, outputWidth, outputHeight, nullptr, nullptr, windowWidth, windowHeight, xStride, yStride, inputChannel * count);
     return output;
 }
 

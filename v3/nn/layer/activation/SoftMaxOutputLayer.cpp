@@ -8,9 +8,9 @@
 
 SoftMaxOutputLayer::SoftMaxOutputLayer(int dim) : LayerBase(dim, dim) {}
 
-const FloatType * SoftMaxOutputLayer::feedForward(const FloatType *x)
+const FloatType * SoftMaxOutputLayer::feedForward(const FloatType *x, int count)
 {
-    softMaxOutput(output, x, outputDim, 1);
+    softMaxOutput(output, x, outputDim, count);
     return output;
 }
 
@@ -28,6 +28,7 @@ void SoftMaxOutputLayer::backPropagate(const FloatType *y)
 FloatType* SoftMaxOutputLayer::getDelta()
 {
     //assert("You cannot get delta from a soft max output layer" == nullptr);
+    return nullptr;
 }
 
 void SoftMaxOutputLayer::computeGradients() {}

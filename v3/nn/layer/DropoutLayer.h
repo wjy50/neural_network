@@ -24,7 +24,7 @@ public:
 
     void setDropoutFraction(FloatType f);
 
-    const FloatType *feedForward(const FloatType *x) override;
+    const FloatType *feedForward(const FloatType *x, int count) override;
 
     const FloatType *feedForwardForOptimization(const FloatType *x) override;
 

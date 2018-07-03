@@ -8,9 +8,9 @@
 
 SigmoidOutputLayer::SigmoidOutputLayer(int dim) : LayerBase(dim, dim) {}
 
-const FloatType * SigmoidOutputLayer::feedForward(const FloatType *x)
+const FloatType * SigmoidOutputLayer::feedForward(const FloatType *x, int count)
 {
-    sigmoidOutput(output, x, outputDim);
+    sigmoidOutput(output, x, outputDim * count);
     return output;
 }
 
@@ -28,6 +28,7 @@ void SigmoidOutputLayer::backPropagate(const FloatType *y)
 FloatType* SigmoidOutputLayer::getDelta()
 {
     //assert("You cannot get delta from a sigmoid output layer" == nullptr);
+    return nullptr;
 }
 
 void SigmoidOutputLayer::computeGradients() {}

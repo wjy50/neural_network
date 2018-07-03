@@ -12,9 +12,9 @@ LReLULayer::LReLULayer(int dim, FloatType l) : LayerBase(dim, dim)
     this->l = l;
 }
 
-const FloatType * LReLULayer::feedForward(const FloatType *x)
+const FloatType * LReLULayer::feedForward(const FloatType *x, int count)
 {
-    leakyReLU(output, x, outputDim, l);
+    leakyReLU(output, x, outputDim * count, l);
     return output;
 }
 

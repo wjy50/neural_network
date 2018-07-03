@@ -50,13 +50,15 @@ public:
 
     virtual FloatType *getDelta() = 0;
 
-    virtual const FloatType *feedForward(const FloatType *x) = 0;
+    virtual const FloatType *feedForward(const FloatType *x, int count) = 0;
 
     virtual const FloatType *feedForwardForOptimization(const FloatType *x) = 0;
 
     virtual void backPropagate(const FloatType *y) = 0;
 
-    void updateParameters();
+    virtual void updateParameters();
+
+    virtual bool needBackPropAtFirst();
 
     virtual ~LayerBase();
 };

@@ -25,10 +25,10 @@ LinearLayer::LinearLayer(int inputDim, int neuronCount, bool noBias) : LayerBase
     in = nullptr;
 }
 
-const FloatType* LinearLayer::feedForward(const FloatType *x)
+const FloatType* LinearLayer::feedForward(const FloatType *x, int count)
 {
-    multiplyMVTo(output, weights, x, outputDim, inputDim);
-    if (biases) linearLayerBias(output, outputDim, biases, 1);
+    multiplyMTmTo(output, x, weights, count, inputDim, outputDim);
+    if (biases) linearLayerBias(output, outputDim, biases, count);
     return output;
 }
 
@@ -50,7 +50,7 @@ void LinearLayer::backPropagate(const FloatType *y)
 void LinearLayer::computeGradients()
 {
     multiplyTmMTo(weightGradients, delta, in, miniBatchSize, outputDim, inputDim);
-    multiplyNVTo(weightGradients, static_cast<FloatType>(1) / miniBatchSize, weightGradients, inputDim * outputDim);
+    scaleV(weightGradients, static_cast<FloatType>(1) / miniBatchSize, inputDim * outputDim);
     if (biases) averageVTo(biasGradients, delta, outputDim, miniBatchSize);
 }
 

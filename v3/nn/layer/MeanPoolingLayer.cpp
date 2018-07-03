@@ -34,9 +34,9 @@ MeanPoolingLayer::MeanPoolingLayer(
     delta = nullptr;
 }
 
-const FloatType* MeanPoolingLayer::feedForward(const FloatType *x)
+const FloatType* MeanPoolingLayer::feedForward(const FloatType *x, int count)
 {
-    meanPooling(x, inputWidth, inputHeight, output, outputWidth, outputHeight, windowWidth, windowHeight, xStride, yStride, inputChannel);
+    meanPooling(x, inputWidth, inputHeight, output, outputWidth, outputHeight, windowWidth, windowHeight, xStride, yStride, inputChannel * count);
     return output;
 }
 

@@ -7,9 +7,9 @@
 
 ReLULayer::ReLULayer(int dim) : LayerBase(dim, dim) {}
 
-const FloatType * ReLULayer::feedForward(const FloatType *x)
+const FloatType * ReLULayer::feedForward(const FloatType *x, int count)
 {
-    reLU(output, x, outputDim);
+    reLU(output, x, outputDim * count);
     return output;
 }
 

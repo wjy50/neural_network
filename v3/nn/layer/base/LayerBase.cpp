@@ -78,6 +78,11 @@ bool LayerBase::needIndependentOutput()
     return true;
 }
 
+bool LayerBase::needBackPropAtFirst()
+{
+    return false;
+}
+
 LayerBase::~LayerBase()
 {
     freeArray(params);
