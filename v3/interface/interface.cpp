@@ -52,10 +52,10 @@ void sigmoidOutput(FloatType *out, const FloatType *in, int len)
     }
 }
 
-void addVTo(FloatType *r, const FloatType *a, const FloatType *b, int len)
+void alphaXPlusY(FloatType alpha, const FloatType *x, FloatType *y, int len)
 {
     for (int i = 0; i < len; ++i) {
-        r[i] = a[i] + b[i];
+        y[i] += alpha * x[i];
     }
 }
 
@@ -187,10 +187,10 @@ void multiplyTmMTo(FloatType *r, const FloatType *lhs, const FloatType *rhs, int
     }
 }
 
-void multiplyNVTo(FloatType *r, FloatType n, const FloatType *v, int dim)
+void scaleV(FloatType *v, FloatType n, int dim)
 {
     for (int i = 0; i < dim; ++i) {
-        r[i] = v[i] * n;
+        v[i] *= n;
     }
 }
 
@@ -690,7 +690,7 @@ void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim
     }
 }
 
-void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize)
+/*void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize)
 {
     for (int i = 0; i < batchSize; ++i) {
         const FloatType *curXSubAvg = xSubAvg + i * dim;
@@ -701,7 +701,7 @@ void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize
     for (int i = 0; i < dim; ++i) {
         out[i] /= batchSize;
     }
-}
+}*/
 
 void bnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize)
 {

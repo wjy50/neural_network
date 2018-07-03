@@ -15,6 +15,10 @@ typedef double FloatType;
 
 #define M_CUBLAS_GEMM cublasDgemm_v2
 
+#define M_CUBLAS_AXPY cublasDaxpy_v2
+
+#define M_CUBLAS_SCALE_V cublasDscal_v2
+
 #define CU_EXP exp
 
 #define CU_FMAX fmax
@@ -28,6 +32,10 @@ typedef float FloatType;
 #define M_CUBLAS_GEMV cublasSgemv_v2
 
 #define M_CUBLAS_GEMM cublasSgemm_v2
+
+#define M_CUBLAS_AXPY cublasSaxpy_v2
+
+#define M_CUBLAS_SCALE_V cublasSscal_v2
 
 #define CU_EXP expf
 

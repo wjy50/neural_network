@@ -23,7 +23,7 @@
 inline void __syncthreads() {}
 inline void __threadfence_block() {}
 inline void __threadfence() {}
-template<class T> inline T __clz(const T val) { return val; }
+template<typename T> inline T __clz(const T val) { return val; }
 struct __cuda_fake_struct { int x; int y; };
 extern __cuda_fake_struct blockDim;
 extern __cuda_fake_struct threadIdx;
@@ -33,11 +33,15 @@ extern __cuda_fake_struct blockIdx;
 
 #define CU_MIN std::min
 
+#define CU_SQRT std::sqrt
+
 #else
 
 #define CU_MAX max
 
 #define CU_MIN min
+
+#define CU_SQRT sqrt
 
 #endif
 

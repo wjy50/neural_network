@@ -12,9 +12,8 @@
 
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-#include <curand_kernel.h>
 
-#define DEF_THREADS_PER_BLOCK 1024
+#define DEF_THREADS_PER_BLOCK 64
 
 extern cublasHandle_t M_CUBLAS_HANDLE;
 
@@ -49,6 +48,8 @@ extern int sharedDeviceFloatArrayLen;
 
 #define multiplyTmMTo(r, lhs, rhs, x, y, z) M_CUBLAS_GEMM(M_CUBLAS_HANDLE, CUBLAS_OP_N, CUBLAS_OP_T, (z), (y), (x), &DEF_ALPHA, (rhs), (z), (lhs), (y), &DEF_BETA, r, (z))
 
+#define addMultiplyMMTo(r, lhs, rhs, x, y, z) M_CUBLAS_GEMM(M_CUBLAS_HANDLE, CUBLAS_OP_N, CUBLAS_OP_N, (z), (x), (y), &DEF_ALPHA, (rhs), (z), (lhs), (y), &DEF_ALPHA, r, (z))
+
 void m_fill_n(FloatType *arr, int len, FloatType v);
 
 void randomPermutation(int *arr, int len, int bias = 0);
@@ -82,9 +83,11 @@ void multiplyTmMTo(FloatType *r, const FloatType *lhs, const FloatType *rhs, int
 
 #endif
 
+void alphaXPlusY(FloatType alpha, const FloatType *x, FloatType *y, int len);
+
 void incArray(int *arr, int len, int bias = 0);
 
-void multiplyNVTo(FloatType *r, FloatType n, const FloatType *v, int dim);
+void scaleV(FloatType *v, FloatType n, int dim);
 
 void averageVTo(FloatType *r, const FloatType *v, int dim, int count);
 
@@ -100,8 +103,6 @@ void reLU_bp(FloatType *out, const FloatType *x, const FloatType *delta, int len
 
 void sigmoidOutput(FloatType *out, const FloatType *in, int len);
 
-void addVTo(FloatType *r, const FloatType *a, const FloatType *b, int len);
-
 void subtractVTo(FloatType *r, const FloatType *a, const FloatType *b, int len);
 
 void softMaxOutput(FloatType *out, const FloatType *in, int len, int count);
@@ -110,19 +111,16 @@ void sgd(FloatType *params, const FloatType *gradients, FloatType eta, int len);
 
 void l2SGD(FloatType *params, const FloatType *gradients, FloatType eta, FloatType reg, int len);
 
-void adamFirstMomentEstimate(FloatType *m, FloatType beta, FloatType oneMBeta, const FloatType *g, int len);
-
-void adamSecondMomentEstimate(FloatType *v, FloatType beta, FloatType oneMBeta, const FloatType *g, int len);
+void adamEstimate(FloatType *m, FloatType *v, FloatType beta1, FloatType oneMBeta1, FloatType beta2, FloatType oneMBeta2, const FloatType *g, int len);
 
 void adamUpdate(FloatType *params, const FloatType *m, const FloatType *v, int len, FloatType alpha,
-                FloatType oneMBeta1T, FloatType oneMBeta2T
+                FloatType oneMBeta1T, FloatType oneMBeta2T, FloatType weightDecay, int decayRange
 );
 
-/*EWIN: exponentially weighted infinity norm*/
-void adaMaxEWIN(FloatType *u, FloatType beta, const FloatType *g, int len);
+void adaMaxEstimate(FloatType *m, FloatType *u, FloatType beta1, FloatType oneMBeta1, FloatType beta2, const FloatType *g, int len);
 
 void adaMaxUpdate(FloatType *params, const FloatType *m, const FloatType *u, int len,
-                  FloatType learningRate, FloatType betaTMOne
+                  FloatType learningRate, FloatType betaTMOne, FloatType weightDecay, int decayRange
 );
 
 void getMNISTBatch(FloatType *data, FloatType *labels,
@@ -173,14 +171,38 @@ void conv(
         int batchSize
 );
 
-void convBP(const FloatType *in, int inputWidth, int inputHeight,
-            FloatType *out, int outputWidth, int outputHeight, int channelCount,
+void conv2(
+        const FloatType *in, int inputWidth, int inputHeight, int channelCount,
+        FloatType *out, int outputWidth, int outputHeight,
+        const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelCount,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int batchSize
+);
+
+void convBP(const FloatType *delta, int outputWidth, int outputHeight,
+            FloatType *deltaOut, int inputWidth, int inputHeight, int channelCount,
             const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelCount,
             int xStride, int yStride, int xPadding, int yPadding,
             int batchSize
 );
 
+void convBP2(const FloatType *delta, int outputWidth, int outputHeight,
+             FloatType *deltaOut, int inputWidth, int inputHeight, int channelCount,
+             const FloatType *kernel, int kernelWidth, int kernelHeight, int kernelCount,
+             int xStride, int yStride, int xPadding, int yPadding,
+             int batchSize
+);
+
 void convGradients(
+        FloatType *kernel, int kernelWidth, int kernelHeight,
+        FloatType *biases, int kernelCount,
+        const FloatType *delta, int outputWidth, int outputHeight,
+        const FloatType *input, int inputWidth, int inputHeight, int channelCount,
+        int xStride, int yStride, int xPadding, int yPadding,
+        int batchSize
+);
+
+void convGradients2(
         FloatType *kernel, int kernelWidth, int kernelHeight,
         FloatType *biases, int kernelCount,
         const FloatType *delta, int outputWidth, int outputHeight,
@@ -199,15 +221,13 @@ void initLinearWeights(FloatType *w, int outputDim, int inputDim);
 
 void linearDropout(FloatType *v, int dim, const int *ids, int dropoutCount, int batchSize);
 
-void bnOneDivDev(FloatType *out, const FloatType *var, int size);
+void bnOneDivDev(FloatType *var, FloatType *oneDivDev, const FloatType *xSubAvg, int dim, int batchSize);
 
 void batchNormalize(FloatType *out, const FloatType *x, const FloatType *avg, const FloatType *oneDivDev, int dim, int batchSize);
 
-void bnTransform(FloatType *out, const FloatType *normOut, const FloatType *gamma, const FloatType *beta, int dim, int batchSize);
+void bnForward(FloatType *out, FloatType *normOut, const FloatType *x, const FloatType *avg, const FloatType *oneDivDev, const FloatType *gamma, const FloatType *beta, int dim, int batchSize);
 
-void bnXSubAvg(FloatType *out, const FloatType *x, const FloatType *avg, int dim, int batchSize);
-
-void bnVariance(FloatType *out, const FloatType *xSubAvg, int dim, int batchSize);
+void bnAvg(FloatType *avg, FloatType *xSubAvg, const FloatType *x, int dim, int batchSize);
 
 void bnDeltaMulCenter(FloatType *out, const FloatType *delta, const FloatType *xSubAvg, int dim, int batchSize);
 
@@ -215,6 +235,8 @@ void bnBackProp(FloatType *out, const FloatType *gamma, const FloatType *normDel
 
 void bnGradients(FloatType *gamma, FloatType *beta, const FloatType *delta, const FloatType *normOut, int dim, int batchSize);
 
-void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, FloatType *globalOneDivDev, const FloatType *avg, const FloatType *var, int dim);
+void bnGlobalValues(FloatType *globalAvg, FloatType *globalVar, const FloatType *avg, const FloatType *var, int dim);
+
+void bnGlobalOneDivDev(FloatType *globalOneDivDev, const FloatType *globalVar, int dim);
 
 #endif //NEURAL_NETWORK_INTERFACE_H
