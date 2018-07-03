@@ -16,7 +16,9 @@ private:
     FloatType *gammaGradient, *betaGradient;
     FloatType *avg, *var, *oneDivDev;
     FloatType *xSubAvg, *deltaAvg, *normDelta, *deltaMulCenter;
-    FloatType *globalAvg, *globalVar, *globalOneDivDev;
+    FloatType *globalAvg, *globalVar;
+
+    bool newBatch;
 protected:
     void onInitialized() override;
 
@@ -24,7 +26,7 @@ protected:
 public:
     explicit BatchNormLayer(int dim);
 
-    const FloatType *feedForward(const FloatType *x) override;
+    const FloatType *feedForward(const FloatType *x, int count) override;
 
     const FloatType *feedForwardForOptimization(const FloatType *x) override;
 

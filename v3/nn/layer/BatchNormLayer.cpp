@@ -25,36 +25,36 @@ BatchNormLayer::BatchNormLayer(int dim) : LayerBase(dim, dim)
     deltaMulCenter = allocArray<FloatType>(dim);
     globalAvg = allocArray<FloatType>(dim);
     globalVar = allocArray<FloatType>(dim);
-    globalOneDivDev = allocArray<FloatType>(dim);
     clearArray<FloatType>(globalAvg, dim);
     clearArray<FloatType>(globalVar, dim);
-    clearArray<FloatType>(globalOneDivDev, dim);
+    newBatch = true;
 }
 
-const FloatType* BatchNormLayer::feedForward(const FloatType *x)
+const FloatType* BatchNormLayer::feedForward(const FloatType *x, int count)
 {
-    batchNormalize(normOut, x, globalAvg, globalOneDivDev, outputDim, 1);
-    bnTransform(output, normOut, gamma, beta, outputDim, 1);
+    if (newBatch) {
+        bnGlobalOneDivDev(oneDivDev, globalVar, outputDim);
+        newBatch = false;
+    }
+    bnForward(output, normOut, x, globalAvg, oneDivDev, gamma, beta, outputDim, count);
     return output;
 }
 
 const FloatType* BatchNormLayer::feedForwardForOptimization(const FloatType *x)
 {
-    averageVTo(avg, x, outputDim, miniBatchSize);
-    bnXSubAvg(xSubAvg, x, avg, outputDim, miniBatchSize);
-    bnVariance(var, xSubAvg, outputDim, miniBatchSize);
-    bnOneDivDev(oneDivDev, var, outputDim);
-    batchNormalize(normOut, x, avg, oneDivDev, outputDim, miniBatchSize);
-    bnTransform(output, normOut, gamma, beta, outputDim, miniBatchSize);
-    bnGlobalValues(globalAvg, globalVar, globalOneDivDev, avg, var, outputDim);
+    bnAvg(avg, xSubAvg, x, outputDim, miniBatchSize);
+    bnOneDivDev(var, oneDivDev, xSubAvg, outputDim, miniBatchSize);
+    bnGlobalValues(globalAvg, globalVar, avg, var, outputDim);
+    bnForward(output, normOut, x, avg, oneDivDev, gamma, beta, outputDim, miniBatchSize);
+    newBatch = true;
     return output;
 }
 
-void BatchNormLayer::backPropagate(const FloatType *y)
+void BatchNormLayer::backPropagate(const FloatType *y) /*y == delta*/
 {
-    averageVTo(deltaAvg, delta, outputDim, miniBatchSize);
-    batchNormalize(normDelta, delta, deltaAvg, oneDivDev, outputDim, miniBatchSize);
-    bnDeltaMulCenter(deltaMulCenter, delta, xSubAvg, outputDim, miniBatchSize);
+    averageVTo(deltaAvg, y, outputDim, miniBatchSize);
+    batchNormalize(normDelta, y, deltaAvg, oneDivDev, outputDim, miniBatchSize);
+    bnDeltaMulCenter(deltaMulCenter, y, xSubAvg, outputDim, miniBatchSize);
     bnBackProp(deltaOutput, gamma, normDelta, normOut, var, deltaMulCenter, outputDim, miniBatchSize);
 }
 
@@ -88,6 +88,5 @@ BatchNormLayer::~BatchNormLayer()
     freeArray(deltaAvg);
     freeArray(globalVar);
     freeArray(globalAvg);
-    freeArray(globalOneDivDev);
     freeArray(deltaMulCenter);
 }

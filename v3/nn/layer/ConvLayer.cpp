@@ -54,29 +54,29 @@ ConvLayer::ConvLayer(
     in = nullptr;
 }
 
-const FloatType* ConvLayer::feedForward(const FloatType *x)
+const FloatType* ConvLayer::feedForward(const FloatType *x, int count)
 {
-    conv(x, inputWidth, inputHeight, inputChannel, output, outputWidth, outputHeight, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, 1);
-    if (biases) convLayerBias(output, outputHeight, outputWidth, kernelCount, biases, 1);
+    conv2(x, inputWidth, inputHeight, inputChannel, output, outputWidth, outputHeight, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, count);
+    if (biases) convLayerBias(output, outputHeight, outputWidth, kernelCount, biases, count);
     return output;
 }
 
 const FloatType* ConvLayer::feedForwardForOptimization(const FloatType *x)
 {
     in = x;
-    conv(x, inputWidth, inputHeight, inputChannel, output, outputWidth, outputHeight, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, miniBatchSize);
+    conv2(x, inputWidth, inputHeight, inputChannel, output, outputWidth, outputHeight, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, miniBatchSize);
     if (biases) convLayerBias(output, outputHeight, outputWidth, kernelCount, biases, miniBatchSize);
     return output;
 }
 
 void ConvLayer::backPropagate(const FloatType *y)
 {
-    convBP(y, outputWidth, outputHeight, deltaOutput, inputWidth, inputHeight, inputChannel, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, miniBatchSize);
+    convBP2(y, outputWidth, outputHeight, deltaOutput, inputWidth, inputHeight, inputChannel, kernels, kernelWidth, kernelHeight, kernelCount, xStride, yStride, xPadding, yPadding, miniBatchSize);
 }
 
 void ConvLayer::computeGradients()
 {
-    convGradients(kernelGradients, kernelWidth, kernelHeight, biasGradients, kernelCount, delta, outputWidth, outputHeight, in, inputWidth, inputHeight, inputChannel, xStride, yStride, xPadding, yPadding, miniBatchSize);
+    convGradients2(kernelGradients, kernelWidth, kernelHeight, biasGradients, kernelCount, delta, outputWidth, outputHeight, in, inputWidth, inputHeight, inputChannel, xStride, yStride, xPadding, yPadding, miniBatchSize);
 }
 
 void ConvLayer::onInitialized()
@@ -104,6 +104,11 @@ int ConvLayer::getOutputHeight()
 int ConvLayer::getKernelCount()
 {
     return kernelCount;
+}
+
+int ConvLayer::getKernelParamCount()
+{
+    return kernelWidth * kernelHeight * inputChannel * kernelCount;
 }
 
 ConvLayer::~ConvLayer()
