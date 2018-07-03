@@ -24,6 +24,8 @@ public:
     virtual void onAttachedToLayer();
 
     virtual void update() = 0;
+
+    virtual ~OptimizerBase() = default;
 };
 
 

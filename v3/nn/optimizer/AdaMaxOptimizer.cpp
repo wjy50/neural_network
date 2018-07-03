@@ -4,8 +4,9 @@
 
 #include "AdaMaxOptimizer.h"
 #include "../../interface/interface.h"
+#include "../../utils/debug.h"
 
-AdaMaxOptimizer::AdaMaxOptimizer(FloatType learningRate, FloatType beta1, FloatType beta2)
+AdaMaxOptimizer::AdaMaxOptimizer(FloatType learningRate, FloatType beta1, FloatType beta2, FloatType weightDecay, int decayRange)
 {
     this->learningRate = learningRate;
     this->beta1 = beta1;
@@ -15,13 +16,15 @@ AdaMaxOptimizer::AdaMaxOptimizer(FloatType learningRate, FloatType beta1, FloatT
 
     m = nullptr;
     u = nullptr;
+
+    this->weightDecay = weightDecay;
+    this->decayRange = decayRange;
 }
 
 void AdaMaxOptimizer::update()
 {
-    adamFirstMomentEstimate(m, beta1, oneMBeta1, gradients, paramCount);
-    adaMaxEWIN(u, beta2, gradients, paramCount);
-    adaMaxUpdate(params, m, u, paramCount, learningRate, beta1T - 1);
+    adaMaxEstimate(m, u, beta1, oneMBeta1, beta2, gradients, paramCount);
+    adaMaxUpdate(params, m, u, paramCount, learningRate, beta1T - 1, weightDecay, decayRange);
     beta1T *= beta1;
 }
 
@@ -31,6 +34,16 @@ void AdaMaxOptimizer::onAttachedToLayer()
     clearArray<FloatType>(m, paramCount);
     u = allocArray<FloatType>(paramCount);
     clearArray<FloatType>(u, paramCount);
+}
+
+void AdaMaxOptimizer::setLearningRate(FloatType learningRate)
+{
+    this->learningRate = learningRate;
+}
+
+FloatType AdaMaxOptimizer::getLearningRate()
+{
+    return learningRate;
 }
 
 AdaMaxOptimizer::~AdaMaxOptimizer()

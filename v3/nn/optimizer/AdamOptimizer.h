@@ -16,14 +16,20 @@ private:
     FloatType oneMBeta1, oneMBeta2;
     FloatType beta1T, beta2T;
     FloatType alpha;
+    FloatType weightDecay;
+    int decayRange;
 public:
-    explicit AdamOptimizer(FloatType learningRate = 0.001, FloatType beta1 = 0.9, FloatType beta2 = 0.999);
+    explicit AdamOptimizer(FloatType learningRate = 0.001, FloatType beta1 = 0.9, FloatType beta2 = 0.999, FloatType weightDecay = 1, int decayRange = 0);
 
     void onAttachedToLayer() override;
 
     void update() override;
 
-    ~AdamOptimizer();
+    void setLearningRate(FloatType learningRate);
+
+    FloatType getLearningRate();
+
+    ~AdamOptimizer() override;
 };
 
 

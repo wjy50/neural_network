@@ -15,14 +15,20 @@ private:
     FloatType learningRate, beta1, beta2;
     FloatType oneMBeta1;
     FloatType beta1T;
+    FloatType weightDecay;
+    int decayRange;
 public:
-    explicit AdaMaxOptimizer(FloatType learningRate = 0.002, FloatType beta1 = 0.9, FloatType beta2 = 0.999);
+    explicit AdaMaxOptimizer(FloatType learningRate = 0.002, FloatType beta1 = 0.9, FloatType beta2 = 0.999, FloatType weightDecay = 1, int decayRange = 0);
 
     void onAttachedToLayer() override;
 
     void update() override;
 
-    ~AdaMaxOptimizer();
+    void setLearningRate(FloatType learningRate);
+
+    FloatType getLearningRate();
+
+    ~AdaMaxOptimizer() override;
 };
 
 
